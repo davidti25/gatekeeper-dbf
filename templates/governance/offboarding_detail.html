@@ -88,9 +88,9 @@
         <div class="space-y-4">
             {% for item in itens %}
             <div class="p-5 rounded-xl border transition-all {% if item.status == 'REVOGADO' %}bg-slate-900/40 border-emerald-900/50 text-slate-300{% elif item.status == 'FALHA' %}bg-rose-950/20 border-rose-900/50 text-slate-300{% elif item.status == 'NAO_APLICAVEL' %}bg-slate-900/30 border-slate-800 text-slate-400{% else %}bg-slate-900/90 border-slate-700/80 shadow-md{% endif %}">
-                
+
                 <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-                    
+
                     <!-- Left: System & Account Info -->
                     <div class="space-y-2 flex-1">
                         <div class="flex items-center space-x-3">
@@ -115,7 +115,7 @@
                             <div>
                                 <div class="flex items-center space-x-2">
                                     <span class="text-base font-bold text-white">{{ item.vinculo_acesso.sistema.nome }}</span>
-                                    
+
                                     <!-- Status Badge -->
                                     {% if item.status == 'REVOGADO' %}
                                         <span class="px-2 py-0.2 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Revogado</span>
@@ -138,9 +138,9 @@
                                         <span class="px-2 py-0.2 rounded text-[10px] font-bold bg-purple-500/20 text-purple-400 border border-purple-500/30">LGPD</span>
                                     {% endif %}
                                 </div>
-                                
+
                                 <p class="text-xs text-slate-400 mt-0.5">
-                                    Tipo: <span class="text-slate-300 font-medium">{{ item.vinculo_acesso.sistema.get_tipo_display }}</span> • 
+                                    Tipo: <span class="text-slate-300 font-medium">{{ item.vinculo_acesso.sistema.get_tipo_display }}</span> •
                                     Perfil: <span class="text-slate-300 font-medium">{{ item.vinculo_acesso.perfil_acesso.nome|default:"Padrão" }}</span>
                                 </p>
                             </div>
@@ -271,4 +271,3 @@
 
 </div>
 {% endblock %}
-

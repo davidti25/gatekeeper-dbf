@@ -5,10 +5,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}GateKeeper-DBF{% endblock %} | Governança de Acessos & IAM</title>
-    
+
     <!-- Fontes Locais (Inter & JetBrains Mono) - Sem vazamento de IP / LGPD -->
     <link rel="stylesheet" href="{% static 'fonts/fonts.css' %}">
-    
+
     <!-- Tailwind CSS Compilado Localmente -->
     <link rel="stylesheet" href="{% static 'css/tailwind.min.css' %}">
 
@@ -22,7 +22,7 @@
     <header class="sticky top-0 z-50 bg-slate-900/90 backdrop-blur border-b border-slate-800">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-16">
-                
+
                 <!-- Logo & Brand -->
                 <div class="flex items-center space-x-3">
                     <a href="{% url 'dashboard' %}" class="flex items-center space-x-3 group">
@@ -109,7 +109,7 @@
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4 w-full">
         {% if messages %}
             {% for message in messages %}
-                <div class="p-4 rounded-xl border mb-3 flex items-start space-x-3 
+                <div class="p-4 rounded-xl border mb-3 flex items-start space-x-3
                     {% if message.tags == 'success' %}bg-emerald-950/40 border-emerald-800/60 text-emerald-200
                     {% elif message.tags == 'error' %}bg-rose-950/40 border-rose-800/60 text-rose-200
                     {% elif message.tags == 'warning' %}bg-amber-950/40 border-amber-800/60 text-amber-200
@@ -154,4 +154,3 @@
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>
-
