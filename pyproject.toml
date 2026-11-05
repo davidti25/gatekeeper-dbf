@@ -29,3 +29,4 @@ known-first-party = ["core", "apps"]
 [tool.bandit]
 exclude_dirs = ["venv", "staticfiles", "tests.py", "migrations"]
 skips = ["B101"]
+

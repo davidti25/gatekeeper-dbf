@@ -18,3 +18,4 @@ pip-audit>=2.8.0
 
 # Gerenciamento de Hooks de Git para Prevenção de Falhas e Vazamento de Segredos
 pre-commit>=4.1.0
+

@@ -55,3 +55,4 @@ echo "[+] [$(date)] Backup concluído com sucesso: ${FINAL_FILE}"
 echo "[+] Purgando backups com mais de ${RETENTION_DAYS} dias..."
 find "${BACKUP_DIR}" -type f \( -name "*.gz" -o -name "*.enc" \) -mtime "+${RETENTION_DAYS}" -delete
 echo "[+] Rotina finalizada."
+

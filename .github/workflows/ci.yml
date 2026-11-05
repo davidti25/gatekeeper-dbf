@@ -73,3 +73,4 @@ jobs:
           SESSION_COOKIE_SECURE=True \
           CSRF_COOKIE_SECURE=True \
           python manage.py check --deploy
+
