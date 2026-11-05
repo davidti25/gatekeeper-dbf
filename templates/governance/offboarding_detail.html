@@ -1,0 +1,211 @@
+{% extends 'base.html' %}
+
+{% block title %}Checklist de Offboarding: {{ processo.colaborador.nome_completo }} | GateKeeper-DBF{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Top Navigation & Actions -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-800">
+        <div class="flex items-center space-x-2 text-sm text-slate-400">
+            <a href="{% url 'offboarding_list' %}" class="hover:text-white transition">Offboarding</a>
+            <span>/</span>
+            <span class="text-white font-medium">{{ processo.colaborador.nome_completo }}</span>
+        </div>
+        <div class="flex items-center space-x-3">
+            <a href="{% url 'colaborador_detail' processo.colaborador.pk %}" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition flex items-center space-x-1.5">
+                <i data-lucide="user" class="w-3.5 h-3.5"></i>
+                <span>Ficha do Colaborador</span>
+            </a>
+            <a href="{% url 'offboarding_relatorio' processo.pk %}" target="_blank" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition shadow-md shadow-emerald-600/20 flex items-center space-x-1.5">
+                <i data-lucide="file-check" class="w-3.5 h-3.5"></i>
+                <span>Emitir Relatório de Auditoria</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Main Process Header Card -->
+    <div class="p-6 rounded-xl bg-slate-900/80 border border-slate-800 space-y-4">
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div class="flex items-center space-x-4">
+                <div class="w-14 h-14 rounded-2xl bg-rose-950/80 border border-rose-800/60 flex items-center justify-center text-xl font-extrabold text-rose-300">
+                    <i data-lucide="shield-alert" class="w-7 h-7"></i>
+                </div>
+                <div>
+                    <div class="flex items-center space-x-3">
+                        <h1 class="text-xl font-bold text-white">{{ processo.colaborador.nome_completo }}</h1>
+                        {% if processo.status == 'CONCLUIDO' %}
+                            <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Processo 100% Concluído</span>
+                        {% else %}
+                            <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20">Em Execução</span>
+                        {% endif %}
+                    </div>
+                    <p class="text-xs text-slate-400 mt-1">
+                        {{ processo.colaborador.cargo.nome }} • {{ processo.colaborador.departamento.nome }} • {{ processo.colaborador.localidade.nome }}
+                    </p>
+                </div>
+            </div>
+
+            <!-- Stats Badge -->
+            <div class="flex items-center space-x-6 text-xs text-slate-400 font-mono self-start md:self-center">
+                <div>
+                    <span class="text-slate-500 block text-[10px] uppercase">Iniciado em</span>
+                    <span class="text-white font-medium">{{ processo.iniciado_em|date:"d/m/Y H:i" }}</span>
+                </div>
+                <div>
+                    <span class="text-slate-500 block text-[10px] uppercase">Responsável SecOps</span>
+                    <span class="text-sky-400 font-medium">{{ processo.responsavel_ti.username|default:"TI Interna" }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="pt-2">
+            <div class="flex justify-between items-center text-xs mb-1.5">
+                <span class="font-semibold text-slate-300">Progresso da Revogação de Acessos</span>
+                <span class="font-mono font-bold {% if processo.percentual_concluido == 100 %}text-emerald-400{% else %}text-sky-400{% endif %}">
+                    {{ processo.total_revogados }} de {{ processo.total_itens }} acessos revogados ({{ processo.percentual_concluido }}%)
+                </span>
+            </div>
+            <div class="w-full bg-slate-800 rounded-full h-3 overflow-hidden">
+                <div class="h-3 rounded-full transition-all duration-500 {% if processo.percentual_concluido == 100 %}bg-emerald-500{% else %}bg-sky-500{% endif %}" style="width: {{ processo.percentual_concluido }}%"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Items to Revoke Checklist -->
+    <div class="space-y-4">
+        <div class="flex items-center justify-between">
+            <h2 class="text-base font-bold text-white flex items-center space-x-2">
+                <i data-lucide="check-square" class="w-5 h-5 text-sky-400"></i>
+                <span>Itens do Checklist de Revogação por Sistema</span>
+            </h2>
+            <span class="text-xs text-slate-400 font-mono">Conformidade CIS Controls v8 (5.5)</span>
+        </div>
+
+        <div class="space-y-4">
+            {% for item in itens %}
+            <div class="p-5 rounded-xl border transition-all {% if item.revogado %}bg-slate-900/40 border-emerald-900/50 text-slate-300{% else %}bg-slate-900/90 border-slate-700/80 shadow-md{% endif %}">
+                
+                <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                    
+                    <!-- Left: System & Account Info -->
+                    <div class="space-y-2 flex-1">
+                        <div class="flex items-center space-x-3">
+                            {% if item.revogado %}
+                                <div class="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+                                    <i data-lucide="check" class="w-5 h-5"></i>
+                                </div>
+                            {% else %}
+                                <div class="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center animate-pulse">
+                                    <i data-lucide="clock" class="w-5 h-5"></i>
+                                </div>
+                            {% endif %}
+
+                            <div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-base font-bold text-white">{{ item.vinculo_acesso.sistema.nome }}</span>
+                                    
+                                    <!-- Criticidade Badge -->
+                                    {% if item.vinculo_acesso.sistema.criticidade == 'CRITICA' %}
+                                        <span class="px-2 py-0.2 rounded text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">Crítico</span>
+                                    {% elif item.vinculo_acesso.sistema.criticidade == 'ALTA' %}
+                                        <span class="px-2 py-0.2 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">Alta</span>
+                                    {% endif %}
+
+                                    {% if item.vinculo_acesso.sistema.armazena_dados_lgpd %}
+                                        <span class="px-2 py-0.2 rounded text-[10px] font-bold bg-purple-500/20 text-purple-400 border border-purple-500/30">LGPD</span>
+                                    {% endif %}
+                                </div>
+                                
+                                <p class="text-xs text-slate-400 mt-0.5">
+                                    Tipo: <span class="text-slate-300 font-medium">{{ item.vinculo_acesso.sistema.get_tipo_display }}</span> • 
+                                    Perfil: <span class="text-slate-300 font-medium">{{ item.vinculo_acesso.perfil_acesso.nome|default:"Padrão" }}</span>
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Target Account / Login -->
+                        <div class="p-3 rounded-lg bg-slate-950/60 border border-slate-800 text-xs font-mono flex items-center justify-between">
+                            <span class="text-slate-400">Conta / Login Alvo:</span>
+                            <span class="text-sky-400 font-bold text-sm">{{ item.vinculo_acesso.identificador_conta }}</span>
+                        </div>
+
+                        <!-- Revocation Playbook / Instructions -->
+                        {% if item.vinculo_acesso.sistema.instrucoes_revogacao %}
+                        <div class="p-3 rounded-lg bg-sky-950/20 border border-sky-900/30 text-xs">
+                            <div class="flex items-center space-x-1.5 text-sky-400 font-semibold mb-1">
+                                <i data-lucide="book-open" class="w-3.5 h-3.5"></i>
+                                <span>Procedimento Operacional de Revogação:</span>
+                            </div>
+                            <p class="text-slate-300 leading-relaxed font-sans">
+                                {{ item.vinculo_acesso.sistema.instrucoes_revogacao }}
+                            </p>
+                            {% if item.vinculo_acesso.sistema.link_painel_admin %}
+                            <a href="{{ item.vinculo_acesso.sistema.link_painel_admin }}" target="_blank" class="inline-flex items-center space-x-1 text-sky-400 hover:text-sky-300 font-semibold text-[11px] mt-2 underline">
+                                <span>Acessar Painel Master do Sistema</span>
+                                <i data-lucide="external-link" class="w-3 h-3"></i>
+                            </a>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+
+                    </div>
+
+                    <!-- Right: Action Form or Audit Confirmation -->
+                    <div class="lg:w-80">
+                        {% if item.revogado %}
+                            <!-- Already Revoked Audit Record -->
+                            <div class="p-3.5 rounded-lg bg-emerald-950/30 border border-emerald-800/40 text-xs space-y-2">
+                                <div class="flex items-center space-x-1.5 text-emerald-400 font-semibold">
+                                    <i data-lucide="check-circle" class="w-4 h-4"></i>
+                                    <span>Revogação Auditada & Confirmada</span>
+                                </div>
+                                <div class="text-[11px] text-slate-300 space-y-1 font-mono">
+                                    <div><span class="text-slate-500">Data/Hora:</span> {{ item.data_revogacao|date:"d/m/Y H:i:s" }}</div>
+                                    <div><span class="text-slate-500">Responsável:</span> {{ item.responsavel_revogacao.username|default:"SecOps" }}</div>
+                                    {% if item.evidencia_revogacao %}
+                                    <div class="mt-1 pt-1 border-t border-emerald-900/40">
+                                        <span class="text-slate-500 block">Evidência:</span>
+                                        <span class="text-emerald-300 font-sans text-xs">{{ item.evidencia_revogacao }}</span>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        {% else %}
+                            <!-- Pending: Form to Revoke Access -->
+                            <form method="post" action="{% url 'revogar_item_offboarding' processo.pk item.pk %}" class="p-4 rounded-xl bg-slate-950/80 border border-slate-700/80 space-y-3">
+                                {% csrf_token %}
+                                <div class="text-xs font-semibold text-white flex items-center space-x-1.5">
+                                    <i data-lucide="shield" class="w-4 h-4 text-rose-400"></i>
+                                    <span>Registrar Revogação</span>
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] text-slate-400 mb-1">Evidência / ID de Chamado (Obrigatório)</label>
+                                    <input type="text" name="evidencia_revogacao" required placeholder="Ex: Ticket GLPI #4582 / Conta desativada no AD" class="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500">
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] text-slate-400 mb-1">Observações Técnicas (Opcional)</label>
+                                    <input type="text" name="observacao" placeholder="Ex: Backup de arquivos executado" class="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500">
+                                </div>
+                                <button type="submit" class="w-full py-2 px-3 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white transition flex items-center justify-center space-x-1.5 shadow-md shadow-rose-600/20">
+                                    <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                                    <span>Confirmar Exclusão de Acesso</span>
+                                </button>
+                            </form>
+                        {% endif %}
+                    </div>
+
+                </div>
+
+            </div>
+            {% empty %}
+            <div class="p-8 rounded-xl bg-slate-900/60 border border-slate-800 text-center text-slate-500">
+                Nenhum sistema pendente de revogação para este colaborador.
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+</div>
+{% endblock %}

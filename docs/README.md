@@ -17,3 +17,4 @@ Bem-vindo à Biblioteca de Documentação do **GateKeeper-DBF**. Este repositór
 ### Novembro / 2026
 * [2026-11-05 - Fase 1: Planejamento, Arquitetura & Governança](file:///home/davidbf/dev/GateKeeper-DBF/docs/biblioteca/2026-11/2026-11-05-fase-1-planejamento-e-arquitetura.md)
 * [2026-11-05 - Fase 2: Fundação Django, Hardening & Modelagem IAM](file:///home/davidbf/dev/GateKeeper-DBF/docs/biblioteca/2026-11/2026-11-05-fase-2-fundacao-django-e-modelagem.md)
+* [2026-11-05 - Fase 3: Dashboard Executivo & Central de Offboarding Interativo](file:///home/davidbf/dev/GateKeeper-DBF/docs/biblioteca/2026-11/2026-11-05-fase-3-dashboard-e-central-de-offboarding.md)

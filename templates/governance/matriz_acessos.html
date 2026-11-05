@@ -1,0 +1,167 @@
+{% extends 'base.html' %}
+
+{% block title %}Matriz de Acessos RBAC | GateKeeper-DBF{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-800">
+        <div>
+            <h1 class="text-2xl font-bold text-white tracking-tight flex items-center space-x-2">
+                <i data-lucide="key-round" class="w-6 h-6 text-sky-400"></i>
+                <span>Matriz de Acessos RBAC & Trilha de Concessões</span>
+            </h1>
+            <p class="text-sm text-slate-400 mt-1">
+                Visão consolidada de todas as credenciais e permissões ativas e revogadas na organização.
+            </p>
+        </div>
+        <div class="flex items-center space-x-2">
+            <a href="/admin/governance/vinculoacesso/add/" target="_blank" class="px-3.5 py-2 rounded-lg text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white transition-all shadow-md shadow-sky-600/20 flex items-center space-x-1.5">
+                <i data-lucide="plus" class="w-4 h-4"></i>
+                <span>Conceder Acesso</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Search & Filter Controls -->
+    <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800">
+        <form method="get" class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <!-- Search Text -->
+            <div class="sm:col-span-2">
+                <label for="q" class="block text-xs font-medium text-slate-400 mb-1">Buscar por Colaborador, Conta ou Sistema</label>
+                <div class="relative">
+                    <input type="text" name="q" id="q" value="{{ current_q }}" placeholder="Nome, usuário ou software..." class="w-full pl-9 pr-3 py-2 rounded-lg bg-slate-800/80 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500">
+                    <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-2.5"></i>
+                </div>
+            </div>
+
+            <!-- Status Filter -->
+            <div>
+                <label for="status" class="block text-xs font-medium text-slate-400 mb-1">Status do Acesso</label>
+                <select name="status" id="status" class="w-full px-3 py-2 rounded-lg bg-slate-800/80 border border-slate-700 text-sm text-white focus:outline-none focus:ring-2 focus:ring-sky-500">
+                    <option value="">Todos os Status</option>
+                    {% for key, val in status_choices %}
+                    <option value="{{ key }}" {% if current_status == key %}selected{% endif %}>{{ val }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- System Filter -->
+            <div>
+                <label for="sistema" class="block text-xs font-medium text-slate-400 mb-1">Sistema / Ativo</label>
+                <select name="sistema" id="sistema" class="w-full px-3 py-2 rounded-lg bg-slate-800/80 border border-slate-700 text-sm text-white focus:outline-none focus:ring-2 focus:ring-sky-500">
+                    <option value="">Todos os Sistemas</option>
+                    {% for sis in sistemas %}
+                    <option value="{{ sis.id }}" {% if current_sistema == sis.id|stringformat:"i" %}selected{% endif %}>{{ sis.nome }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Submit & Reset Buttons -->
+            <div class="sm:col-span-4 flex items-center justify-end space-x-2 pt-2 border-t border-slate-800">
+                {% if current_q or current_status or current_sistema %}
+                <a href="{% url 'matriz_acesso' %}" class="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition">
+                    Limpar Filtros
+                </a>
+                {% endif %}
+                <button type="submit" class="px-4 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-sky-400 hover:text-white border border-slate-700 transition">
+                    Filtrar Matriz
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Table of Access Grants -->
+    <div class="rounded-xl bg-slate-900/80 border border-slate-800 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm text-slate-300">
+                <thead class="bg-slate-950/60 text-xs uppercase font-semibold text-slate-400 tracking-wider border-b border-slate-800">
+                    <tr>
+                        <th class="px-5 py-3.5">Colaborador</th>
+                        <th class="px-5 py-3.5">Sistema / Ativo</th>
+                        <th class="px-5 py-3.5">Conta / Login</th>
+                        <th class="px-5 py-3.5">Perfil / Privilégio</th>
+                        <th class="px-5 py-3.5">Status</th>
+                        <th class="px-5 py-3.5">Concedido Em</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800/80">
+                    {% for vinculo in vinculos %}
+                    <tr class="hover:bg-slate-800/40 transition">
+                        <!-- Colaborador -->
+                        <td class="px-5 py-3.5">
+                            <a href="{% url 'colaborador_detail' vinculo.colaborador.pk %}" class="font-semibold text-white hover:text-sky-400 transition block">
+                                {{ vinculo.colaborador.nome_completo }}
+                            </a>
+                            <span class="text-xs text-slate-400 font-mono">{{ vinculo.colaborador.cargo.nome }} ({{ vinculo.colaborador.departamento.sigla }})</span>
+                        </td>
+
+                        <!-- Sistema -->
+                        <td class="px-5 py-3.5">
+                            <span class="font-medium text-slate-200 block">{{ vinculo.sistema.nome }}</span>
+                            <span class="text-xs text-slate-500 font-mono">{{ vinculo.sistema.get_tipo_display }}</span>
+                        </td>
+
+                        <!-- Login -->
+                        <td class="px-5 py-3.5 font-mono text-xs text-sky-400">
+                            {{ vinculo.identificador_conta }}
+                        </td>
+
+                        <!-- Perfil -->
+                        <td class="px-5 py-3.5 text-xs text-slate-300">
+                            {{ vinculo.perfil_acesso.nome|default:"Padrão" }}
+                        </td>
+
+                        <!-- Status -->
+                        <td class="px-5 py-3.5">
+                            {% if vinculo.status == 'ATIVO' %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5"></span>
+                                    Ativo
+                                </span>
+                            {% elif vinculo.status == 'REVOGADO' %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                                    Revogado
+                                </span>
+                            {% else %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                    Bloqueado
+                                </span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Data Concessao -->
+                        <td class="px-5 py-3.5 text-xs text-slate-400 font-mono">
+                            {{ vinculo.data_concessao|date:"d/m/Y H:i" }}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="px-5 py-12 text-center text-slate-500">
+                            Nenhum registro encontrado na matriz de acessos.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        {% if is_paginated %}
+        <div class="px-5 py-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+            <span>Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
+            <div class="flex space-x-1">
+                {% if page_obj.has_previous %}
+                <a href="?page={{ page_obj.previous_page_number }}&q={{ current_q }}&status={{ current_status }}&sistema={{ current_sistema }}" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-white">Anterior</a>
+                {% endif %}
+                {% if page_obj.has_next %}
+                <a href="?page={{ page_obj.next_page_number }}&q={{ current_q }}&status={{ current_status }}&sistema={{ current_sistema }}" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-white">Próxima</a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+</div>
+{% endblock %}

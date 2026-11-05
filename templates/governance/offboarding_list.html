@@ -1,0 +1,150 @@
+{% extends 'base.html' %}
+
+{% block title %}Central de Offboarding | GateKeeper-DBF{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-800">
+        <div>
+            <h1 class="text-2xl font-bold text-white tracking-tight flex items-center space-x-2">
+                <i data-lucide="user-minus" class="w-6 h-6 text-rose-400"></i>
+                <span>Central de Offboarding & Revogação de Acessos</span>
+            </h1>
+            <p class="text-sm text-slate-400 mt-1">
+                Execução e auditoria do encerramento de acessos corporativos (CIS Controls 5.5 e mitigação MITRE T1078).
+            </p>
+        </div>
+        <div class="flex items-center space-x-3">
+            <a href="{% url 'colaborador_list' %}" class="px-3.5 py-2 rounded-lg text-xs font-semibold bg-rose-600/90 hover:bg-rose-500 text-white transition-all shadow-md shadow-rose-600/20 flex items-center space-x-1.5">
+                <i data-lucide="plus" class="w-4 h-4"></i>
+                <span>Iniciar Desligamento</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Filter Tabs -->
+    <div class="flex items-center space-x-2 border-b border-slate-800 pb-2">
+        <a href="{% url 'offboarding_list' %}" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition {% if not current_status %}bg-slate-800 text-sky-400 border border-slate-700{% else %}text-slate-400 hover:text-white{% endif %}">
+            Todos os Processos
+        </a>
+        <a href="?status=INICIADO" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition {% if current_status == 'INICIADO' %}bg-sky-500/20 text-sky-400 border border-sky-500/40{% else %}text-slate-400 hover:text-white{% endif %}">
+            Em Andamento
+        </a>
+        <a href="?status=CONCLUIDO" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition {% if current_status == 'CONCLUIDO' %}bg-emerald-500/20 text-emerald-400 border border-emerald-500/40{% else %}text-slate-400 hover:text-white{% endif %}">
+            Concluídos (100% Auditados)
+        </a>
+    </div>
+
+    <!-- Table of Offboardings -->
+    <div class="rounded-xl bg-slate-900/80 border border-slate-800 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm text-slate-300">
+                <thead class="bg-slate-950/60 text-xs uppercase font-semibold text-slate-400 tracking-wider border-b border-slate-800">
+                    <tr>
+                        <th class="px-5 py-3.5">Colaborador Desligado</th>
+                        <th class="px-5 py-3.5">Cargo / Setor</th>
+                        <th class="px-5 py-3.5">Iniciado Em</th>
+                        <th class="px-5 py-3.5">Responsável TI</th>
+                        <th class="px-5 py-3.5">Progresso da Revogação</th>
+                        <th class="px-5 py-3.5">Status</th>
+                        <th class="px-5 py-3.5 text-right">Ações</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800/80">
+                    {% for processo in processos %}
+                    <tr class="hover:bg-slate-800/40 transition">
+                        <!-- Colaborador -->
+                        <td class="px-5 py-4">
+                            <div class="flex items-center space-x-3">
+                                <div class="w-9 h-9 rounded-xl bg-rose-950/60 border border-rose-800/50 flex items-center justify-center font-bold text-xs text-rose-300">
+                                    {{ processo.colaborador.nome_completo|slice:":2"|upper }}
+                                </div>
+                                <div>
+                                    <a href="{% url 'offboarding_detail' processo.pk %}" class="font-semibold text-white hover:text-rose-400 transition block">
+                                        {{ processo.colaborador.nome_completo }}
+                                    </a>
+                                    <span class="text-xs text-slate-500 font-mono">{{ processo.colaborador.email_corporativo }}</span>
+                                </div>
+                            </div>
+                        </td>
+
+                        <!-- Cargo / Setor -->
+                        <td class="px-5 py-4 text-xs">
+                            <span class="text-slate-200 font-medium block">{{ processo.colaborador.cargo.nome }}</span>
+                            <span class="text-slate-500 font-mono">{{ processo.colaborador.departamento.sigla }}</span>
+                        </td>
+
+                        <!-- Data Início -->
+                        <td class="px-5 py-4 text-xs font-mono text-slate-400">
+                            {{ processo.iniciado_em|date:"d/m/Y H:i" }}
+                        </td>
+
+                        <!-- Responsável TI -->
+                        <td class="px-5 py-4 text-xs text-slate-300">
+                            {{ processo.responsavel_ti.username|default:"TI SecOps" }}
+                        </td>
+
+                        <!-- Progresso da Revogação -->
+                        <td class="px-5 py-4">
+                            <div class="w-36">
+                                <div class="flex justify-between text-[11px] text-slate-400 mb-1 font-mono">
+                                    <span>{{ processo.total_revogados }}/{{ processo.total_itens }}</span>
+                                    <span>{{ processo.percentual_concluido }}%</span>
+                                </div>
+                                <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                                    <div class="h-1.5 rounded-full {% if processo.percentual_concluido == 100 %}bg-emerald-500{% else %}bg-sky-500{% endif %}" style="width: {{ processo.percentual_concluido }}%"></div>
+                                </div>
+                            </div>
+                        </td>
+
+                        <!-- Status -->
+                        <td class="px-5 py-4">
+                            {% if processo.status == 'CONCLUIDO' %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5"></span>
+                                    Concluído
+                                </span>
+                            {% elif processo.status == 'INICIADO' %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-sky-400 mr-1.5 animate-pulse"></span>
+                                    Em Andamento
+                                </span>
+                            {% else %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                                    Pendente
+                                </span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Ações -->
+                        <td class="px-5 py-4 text-right">
+                            <div class="flex items-center justify-end space-x-2">
+                                <a href="{% url 'offboarding_detail' processo.pk %}" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-sky-400 hover:text-white border border-slate-700 transition" title="Abrir Checklist">
+                                    Checklist
+                                </a>
+                                {% if processo.status == 'CONCLUIDO' %}
+                                <a href="{% url 'offboarding_relatorio' processo.pk %}" target="_blank" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 transition flex items-center space-x-1" title="Relatório de Auditoria">
+                                    <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
+                                    <span>Relatório</span>
+                                </a>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="px-5 py-12 text-center text-slate-500">
+                            <i data-lucide="check-circle" class="w-8 h-8 mx-auto text-slate-600 mb-2"></i>
+                            <p class="text-sm">Nenhum processo de offboarding encontrado.</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

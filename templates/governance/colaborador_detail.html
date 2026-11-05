@@ -1,0 +1,222 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ colaborador.nome_completo }} | Detalhes do Colaborador{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Breadcrumb & Top Bar -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-800">
+        <div class="flex items-center space-x-2 text-sm text-slate-400">
+            <a href="{% url 'colaborador_list' %}" class="hover:text-white transition">Colaboradores</a>
+            <span>/</span>
+            <span class="text-white font-medium">{{ colaborador.nome_completo }}</span>
+        </div>
+        <div class="flex items-center space-x-2">
+            <a href="/admin/governance/colaborador/{{ colaborador.pk }}/change/" target="_blank" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition flex items-center space-x-1.5">
+                <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
+                <span>Editar no Admin</span>
+            </a>
+            <a href="/admin/governance/vinculoacesso/add/?colaborador={{ colaborador.pk }}" target="_blank" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white transition flex items-center space-x-1.5">
+                <i data-lucide="key" class="w-3.5 h-3.5"></i>
+                <span>Conceder Novo Acesso</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Main Profile Card -->
+    <div class="p-6 rounded-xl bg-slate-900/80 border border-slate-800 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+        <div class="flex items-start space-x-4">
+            <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-sky-600 via-indigo-600 to-cyan-400 flex items-center justify-center text-xl font-extrabold text-white shadow-lg shadow-sky-500/20">
+                {{ colaborador.nome_completo|slice:":2"|upper }}
+            </div>
+            <div>
+                <div class="flex items-center space-x-3">
+                    <h1 class="text-2xl font-bold text-white">{{ colaborador.nome_completo }}</h1>
+                    {% if colaborador.status == 'ATIVO' %}
+                        <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Ativo</span>
+                    {% elif colaborador.status == 'FERIAS' %}
+                        <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20">Em Férias</span>
+                    {% elif colaborador.status == 'AFASTADO' %}
+                        <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">Afastado</span>
+                    {% else %}
+                        <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">Desligado</span>
+                    {% endif %}
+                </div>
+                <p class="text-sm text-slate-300 mt-1">
+                    <span class="font-semibold text-white">{{ colaborador.cargo.nome }}</span> • 
+                    <span class="text-sky-400 font-mono">{{ colaborador.departamento.nome }} ({{ colaborador.departamento.sigla }})</span>
+                </p>
+                <div class="mt-3 flex flex-wrap items-center gap-4 text-xs text-slate-400 font-mono">
+                    <span class="flex items-center space-x-1">
+                        <i data-lucide="mail" class="w-3.5 h-3.5 text-slate-500"></i>
+                        <span>{{ colaborador.email_corporativo }}</span>
+                    </span>
+                    <span class="flex items-center space-x-1">
+                        <i data-lucide="map-pin" class="w-3.5 h-3.5 text-slate-500"></i>
+                        <span>{{ colaborador.localidade.nome }}</span>
+                    </span>
+                    {% if colaborador.matricula %}
+                    <span class="flex items-center space-x-1">
+                        <i data-lucide="badge-check" class="w-3.5 h-3.5 text-slate-500"></i>
+                        <span>ID: {{ colaborador.matricula }}</span>
+                    </span>
+                    {% endif %}
+                    <span class="flex items-center space-x-1">
+                        <i data-lucide="calendar" class="w-3.5 h-3.5 text-slate-500"></i>
+                        <span>Admissão: {{ colaborador.data_admissao|date:"d/m/Y" }}</span>
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Offboarding Action Trigger -->
+        <div id="offboarding" class="p-4 rounded-xl bg-slate-800/60 border border-slate-700/80 md:w-80">
+            {% if offboarding %}
+                <div class="space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-slate-300 uppercase tracking-wider">Processo de Offboarding</span>
+                        <span class="text-xs font-mono font-bold text-sky-400">{{ offboarding.percentual_concluido }}%</span>
+                    </div>
+                    <div class="w-full bg-slate-900 rounded-full h-2 overflow-hidden">
+                        <div class="h-2 rounded-full {% if offboarding.percentual_concluido == 100 %}bg-emerald-500{% else %}bg-sky-500{% endif %}" style="width: {{ offboarding.percentual_concluido }}%"></div>
+                    </div>
+                    <p class="text-xs text-slate-400">
+                        {{ offboarding.total_revogados }} de {{ offboarding.total_itens }} acessos revogados.
+                    </p>
+                    <a href="{% url 'offboarding_detail' offboarding.pk %}" class="w-full mt-2 block text-center px-3 py-1.5 rounded-lg text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white transition">
+                        Acessar Checklist de Revogação
+                    </a>
+                </div>
+            {% else %}
+                <div class="space-y-2">
+                    <div class="flex items-center space-x-2 text-rose-400">
+                        <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+                        <span class="text-xs font-bold uppercase tracking-wider">Protocolo de Desligamento</span>
+                    </div>
+                    <p class="text-[11px] text-slate-400">
+                        Inicia a revogação orquestrada de todos os {{ acessos_ativos.count }} acessos ativos para conformidade com CIS 5.5 e LGPD.
+                    </p>
+                    <form method="post" action="{% url 'iniciar_offboarding' colaborador.pk %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="motivo_desligamento" value="Desligamento Formal Solicitado">
+                        <button type="submit" onclick="return confirm('Deseja iniciar o processo formal de desligamento para {{ colaborador.nome_completo }}?');" class="w-full mt-1 px-3 py-2 rounded-lg text-xs font-semibold bg-rose-600/90 hover:bg-rose-500 text-white transition flex items-center justify-center space-x-1.5 shadow-md shadow-rose-600/20">
+                            <i data-lucide="user-minus" class="w-3.5 h-3.5"></i>
+                            <span>Iniciar Offboarding Seguro</span>
+                        </button>
+                    </form>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Active Accesses Section -->
+    <div class="p-6 rounded-xl bg-slate-900/80 border border-slate-800 space-y-4">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div class="flex items-center space-x-2">
+                <i data-lucide="key" class="w-5 h-5 text-emerald-400"></i>
+                <h2 class="text-base font-semibold text-white">Acessos Atualmente Ativos ({{ acessos_ativos.count }})</h2>
+            </div>
+            <span class="text-xs text-slate-400 font-mono">Matriz de Privilégios Concedidos</span>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm text-slate-300">
+                <thead class="bg-slate-950/60 text-xs uppercase font-semibold text-slate-400 tracking-wider border-b border-slate-800">
+                    <tr>
+                        <th class="px-4 py-3">Sistema / Ativo</th>
+                        <th class="px-4 py-3">Tipo</th>
+                        <th class="px-4 py-3">Criticidade</th>
+                        <th class="px-4 py-3">Conta / Login Utilizado</th>
+                        <th class="px-4 py-3">Perfil Concedido</th>
+                        <th class="px-4 py-3">Concedido Em</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800/80">
+                    {% for vinculo in acessos_ativos %}
+                    <tr class="hover:bg-slate-800/40 transition">
+                        <td class="px-4 py-3">
+                            <span class="font-semibold text-white block">{{ vinculo.sistema.nome }}</span>
+                            {% if vinculo.sistema.armazena_dados_lgpd %}
+                            <span class="text-[10px] text-purple-400 flex items-center space-x-1 mt-0.5">
+                                <i data-lucide="shield-alert" class="w-3 h-3"></i>
+                                <span>Contém Dados LGPD</span>
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-xs text-slate-400">
+                            {{ vinculo.sistema.get_tipo_display }}
+                        </td>
+                        <td class="px-4 py-3">
+                            {% if vinculo.sistema.criticidade == 'CRITICA' %}
+                                <span class="px-2 py-0.5 rounded text-[11px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">Crítica</span>
+                            {% elif vinculo.sistema.criticidade == 'ALTA' %}
+                                <span class="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">Alta</span>
+                            {% elif vinculo.sistema.criticidade == 'MEDIA' %}
+                                <span class="px-2 py-0.5 rounded text-[11px] font-bold bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">Média</span>
+                            {% else %}
+                                <span class="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Baixa</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 font-mono text-xs text-sky-400">
+                            {{ vinculo.identificador_conta }}
+                        </td>
+                        <td class="px-4 py-3 text-xs text-slate-300">
+                            {{ vinculo.perfil_acesso.nome|default:"Perfil Operacional" }}
+                        </td>
+                        <td class="px-4 py-3 text-xs text-slate-400 font-mono">
+                            {{ vinculo.data_concessao|date:"d/m/Y H:i" }}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="px-4 py-8 text-center text-slate-500">
+                            Nenhum acesso ativo concedido a este colaborador.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Revoked / Historical Accesses -->
+    {% if acessos_revogados %}
+    <div class="p-6 rounded-xl bg-slate-900/60 border border-slate-800 space-y-4">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div class="flex items-center space-x-2">
+                <i data-lucide="history" class="w-5 h-5 text-slate-400"></i>
+                <h2 class="text-base font-semibold text-slate-300">Histórico de Acessos Revogados ({{ acessos_revogados.count }})</h2>
+            </div>
+            <span class="text-xs text-slate-500 font-mono">Trilha de Auditoria</span>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm text-slate-400">
+                <thead class="bg-slate-950/40 text-xs uppercase font-semibold text-slate-500 tracking-wider border-b border-slate-800">
+                    <tr>
+                        <th class="px-4 py-2.5">Sistema</th>
+                        <th class="px-4 py-2.5">Conta</th>
+                        <th class="px-4 py-2.5">Data Revogação</th>
+                        <th class="px-4 py-2.5">Revogado Por</th>
+                        <th class="px-4 py-2.5">Justificativa</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800/60 text-xs">
+                    {% for vinculo in acessos_revogados %}
+                    <tr>
+                        <td class="px-4 py-2.5 font-medium text-slate-300">{{ vinculo.sistema.nome }}</td>
+                        <td class="px-4 py-2.5 font-mono text-slate-400">{{ vinculo.identificador_conta }}</td>
+                        <td class="px-4 py-2.5 font-mono">{{ vinculo.data_revogacao|date:"d/m/Y H:i" }}</td>
+                        <td class="px-4 py-2.5">{{ vinculo.revogado_por.username|default:"TI SecOps" }}</td>
+                        <td class="px-4 py-2.5 text-slate-500">{{ vinculo.justificativa|truncatechars:60 }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}
