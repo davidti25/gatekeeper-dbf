@@ -37,11 +37,13 @@ logger = logging.getLogger("gatekeeper.audit")
 User = get_user_model()
 
 
-class DashboardView(TemplateView):
+class DashboardView(PermissionRequiredMixin, TemplateView):
     """
-    Dashboard Executivo acessível para todos os perfis autorizados (Auditor, Analista TI, Gestor SecOps).
+    Dashboard Executivo com segregação de funções e controle de acesso estrito (Fase 5.2).
+    Acessível para todos os perfis autorizados (Auditor, Analista TI, Gestor SecOps).
     """
 
+    permission_required = "governance.view_colaborador"
     template_name = "governance/dashboard.html"
 
     def get_context_data(self, **kwargs):

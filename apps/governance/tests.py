@@ -13,13 +13,17 @@ Cobre:
 - Fase 4 (Qualidade & DevSecOps): Anti-N+1 Queries, Bloqueio de Acessos a Desligados, Cobertura Rigorosa
 """
 
+from allauth.mfa.models import Authenticator
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
+from django.core.management import call_command
 from django.db.models import ProtectedError
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+
+from apps.governance import urls as gov_urls
 
 from .forms import RevogacaoItemForm
 from .models import (
@@ -57,11 +61,17 @@ class GovernanceSecurityAndModelTests(TestCase):
             username="analista.secops", email="secops@empresa.com.br", password="ComplexPassword123!"
         )
         self.user_analista.groups.add(self.grupo_analista)
+        Authenticator.objects.create(
+            user=self.user_analista, type=Authenticator.Type.TOTP, data={"secret": "JBSWY3DPEHPK3PXP"}
+        )
 
         self.user_gestor = User.objects.create_user(
             username="gestor.ciso", email="ciso@empresa.com.br", password="ComplexPassword123!", is_staff=True
         )
         self.user_gestor.groups.add(self.grupo_gestor)
+        Authenticator.objects.create(
+            user=self.user_gestor, type=Authenticator.Type.TOTP, data={"secret": "JBSWY3DPEHPK3PXP"}
+        )
 
         # Localidade & Setor
         self.matriz = Localidade.objects.create(
@@ -214,6 +224,7 @@ class GovernanceSecurityAndModelTests(TestCase):
         root_user = User.objects.create_superuser(
             username="root.test", email="root.test@gatekeeper.local", password="RootDev2026!"
         )
+        Authenticator.objects.create(user=root_user, type=Authenticator.Type.TOTP, data={"secret": "JBSWY3DPEHPK3PXP"})
         self.client.force_login(root_user)
 
         # Acesso às telas principais
@@ -251,6 +262,9 @@ class Phase1AuditAndIntegrityTests(TestCase):
             username="secops.analyst", email="analyst@empresa.com.br", password="ComplexPassword123!"
         )
         self.user_analista.groups.add(self.grupo_analista)
+        Authenticator.objects.create(
+            user=self.user_analista, type=Authenticator.Type.TOTP, data={"secret": "JBSWY3DPEHPK3PXP"}
+        )
 
         self.matriz = Localidade.objects.create(nome="Filial Salvador", codigo="SSA-01", cidade="Salvador", estado="BA")
         self.depto = Departamento.objects.create(
@@ -610,6 +624,7 @@ class Phase4QualityDevSecOpsAndPerformanceTests(TestCase):
             username="devsecops.analyst", email="devsecops@empresa.com.br", password="ComplexPassword123!"
         )
         self.user.groups.add(self.grupo_analista)
+        Authenticator.objects.create(user=self.user, type=Authenticator.Type.TOTP, data={"secret": "JBSWY3DPEHPK3PXP"})
 
         self.depto = Departamento.objects.create(nome="Engenharia de Software", sigla="ENG")
         self.cargo = Cargo.objects.create(nome="Engenheiro DevSecOps", departamento=self.depto)
@@ -760,3 +775,201 @@ class Phase4QualityDevSecOpsAndPerformanceTests(TestCase):
             self.assertTrue(hasattr(p, "_total_resolvidos"))
             self.assertEqual(p.total_itens, p._total_itens)
             self.assertEqual(p.total_revogados, p._total_revogados)
+
+
+class Phase5EmergencyEntryProtectionTests(TestCase):
+    """
+    Testes de Segurança para Fase 5: Emergência — Fechar as Portas de Entrada (Plano v2).
+
+    Cobre:
+    - 5.1: Desativação do cadastro público (signup): NoSignupAccountAdapter bloqueia criação de contas via web.
+    - 5.2: DashboardView exige permissão estrita 'governance.view_colaborador'.
+    - 5.2 (Catraca): 100% das rotas da governança retornam 403 para usuário sem grupo (Fail-Closed).
+    - 5.3: RequireMFAMiddleware: perfis de escrita (Analista TI, Gestor SecOps, staff) são forçados a cadastrar TOTP.
+    - 5.4: Comando auditar_contas: identifica e desativa preventivamente contas órfãs sem grupos e sem MFA.
+    """
+
+    def setUp(self):
+        self.client = Client()
+
+        # Grupos RBAC
+        self.grupo_auditor = Group.objects.get(name="Auditor")
+        self.grupo_analista = Group.objects.get(name="Analista TI")
+        self.grupo_gestor = Group.objects.get(name="Gestor SecOps")
+
+        # Usuários
+        self.user_sem_grupo = User.objects.create_user(
+            username="usuario.intruso", email="intruso@externo.com", password="ComplexPassword123!"
+        )
+
+        self.user_auditor = User.objects.create_user(
+            username="auditor.fase5", email="auditor.fase5@empresa.com.br", password="ComplexPassword123!"
+        )
+        self.user_auditor.groups.add(self.grupo_auditor)
+
+        self.user_analista = User.objects.create_user(
+            username="analista.fase5", email="analista.fase5@empresa.com.br", password="ComplexPassword123!"
+        )
+        self.user_analista.groups.add(self.grupo_analista)
+        Authenticator.objects.create(
+            user=self.user_analista, type=Authenticator.Type.TOTP, data={"secret": "JBSWY3DPEHPK3PXP"}
+        )
+
+        # Dados de apoio para rotas parametrizadas
+        self.depto = Departamento.objects.create(nome="Segurança Operacional", sigla="SO")
+        self.cargo = Cargo.objects.create(nome="Analista de Defesa", departamento=self.depto)
+        self.localidade = Localidade.objects.create(nome="Recife SEC", codigo="REC-01", cidade="Recife", estado="PE")
+        self.colaborador = Colaborador.objects.create(
+            nome_completo="Fernando Ameaça",
+            matricula="MAT-AMEACA-01",
+            email_corporativo="fernando.ameaca@empresa.com.br",
+            departamento=self.depto,
+            cargo=self.cargo,
+            localidade=self.localidade,
+            data_admissao=timezone.localdate(),
+            status=Colaborador.StatusColaborador.ATIVO,
+        )
+        self.sistema = Sistema.objects.create(
+            nome="SIEM Splunk Enterprise",
+            tipo=Sistema.TipoSistema.ONPREM,
+            criticidade=Sistema.Criticidade.CRITICA,
+            tipo_autenticacao=Sistema.TipoAutenticacao.INDIVIDUAL,
+        )
+        self.vinculo = VinculoAcesso.objects.create(
+            colaborador=self.colaborador,
+            sistema=self.sistema,
+            identificador_conta="fernando.siem",
+            status=VinculoAcesso.StatusAcesso.ATIVO,
+            concedido_por=self.user_analista,
+        )
+        self.processo = ProcessoOffboarding.objects.create(
+            colaborador=self.colaborador,
+            responsavel_ti=self.user_analista,
+            status=ProcessoOffboarding.StatusOffboarding.INICIADO,
+            observacoes="Offboarding para teste catraca",
+        )
+        self.item_checklist = ItemChecklistOffboarding.objects.create(
+            processo=self.processo,
+            vinculo_acesso=self.vinculo,
+            status=ItemChecklistOffboarding.StatusItem.PENDENTE,
+        )
+
+    def test_51_cadastro_publico_desativado_no_signup_adapter(self):
+        """5.1: Bloqueia registro de novas contas via /accounts/signup/ (Deny by Default / CIS 5.1)."""
+        signup_url = reverse("account_signup")
+
+        # GET deve renderizar aviso de cadastro desativado (signup_closed)
+        resp_get = self.client.get(signup_url)
+        self.assertEqual(resp_get.status_code, 200)
+        self.assertContains(resp_get, "Cadastro Público Desativado")
+
+        # POST deve ser descartado sem criar usuário no banco
+        dados_cadastro = {
+            "username": "hacker.externo",
+            "email": "hacker@evil.corp",
+            "password1": "SenhaInvasao123!",
+            "password2": "SenhaInvasao123!",
+        }
+        resp_post = self.client.post(signup_url, dados_cadastro)
+        self.assertEqual(resp_post.status_code, 200)
+        self.assertFalse(User.objects.filter(username="hacker.externo").exists())
+
+    def test_52_dashboard_exige_permissao_estrita_view_colaborador(self):
+        """5.2: DashboardView exige 'governance.view_colaborador' e bloqueia usuário autenticado sem grupos."""
+        # Usuário autenticado sem grupo recebe 403 Forbidden
+        self.client.force_login(self.user_sem_grupo)
+        resp_bloqueado = self.client.get(reverse("dashboard"))
+        self.assertEqual(resp_bloqueado.status_code, 403)
+
+        # Usuário do grupo Auditor tem view_colaborador e acessa com 200 OK
+        self.client.force_login(self.user_auditor)
+        resp_autorizado = self.client.get(reverse("dashboard"))
+        self.assertEqual(resp_autorizado.status_code, 200)
+
+    def test_52_catraca_todas_rotas_governance_exigem_permissao(self):
+        """5.2 (Catraca): 100% das rotas de governance retornam 403 para usuário sem grupo; novas rotas obrigam cadastro."""
+        rotas_protegidas = {
+            "dashboard": {},
+            "colaborador_list": {},
+            "colaborador_detail": {"pk": self.colaborador.pk},
+            "iniciar_offboarding": {"pk": self.colaborador.pk},
+            "sistema_list": {},
+            "matriz_acesso": {},
+            "offboarding_list": {},
+            "offboarding_detail": {"pk": self.processo.pk},
+            "revogar_item_offboarding": {"pk": self.processo.pk, "item_id": self.item_checklist.pk},
+            "offboarding_relatorio": {"pk": self.processo.pk},
+        }
+
+        # Garante que nenhuma rota futura seja criada sem estar cadastrada no teste-catraca
+        nomes_urls_governance = {p.name for p in gov_urls.urlpatterns}
+        self.assertEqual(
+            nomes_urls_governance,
+            set(rotas_protegidas.keys()),
+            "❌ ALERTA DE SEGURANÇA: Existe rota em governance/urls.py não registrada no teste-catraca!",
+        )
+
+        self.client.force_login(self.user_sem_grupo)
+        for nome_rota, kwargs in rotas_protegidas.items():
+            url = reverse(nome_rota, kwargs=kwargs)
+            resp = self.client.get(url)
+            self.assertEqual(
+                resp.status_code,
+                403,
+                f"Falha de Autorização: Rota '{nome_rota}' ({url}) respondeu {resp.status_code} em vez de 403 para usuário sem perfil!",
+            )
+
+    def test_53_mfa_obrigatorio_para_escrita_e_staff(self):
+        """5.3: Usuários com poder de escrita ou staff sem TOTP são redirecionados para ativação de MFA (CIS 6.5)."""
+        analista_sem_mfa = User.objects.create_user(
+            username="analista.pendente", email="pendente@empresa.com.br", password="ComplexPassword123!"
+        )
+        analista_sem_mfa.groups.add(self.grupo_analista)
+
+        self.client.force_login(analista_sem_mfa)
+
+        # Tentativa de acesso a rota do sistema deve ser redirecionada para ativação de TOTP
+        resp = self.client.get(reverse("colaborador_list"))
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn(reverse("mfa_activate_totp"), resp.get("Location"))
+
+        # Após cadastrar TOTP, o acesso deve ser liberado imediatamente
+        Authenticator.objects.create(
+            user=analista_sem_mfa, type=Authenticator.Type.TOTP, data={"secret": "JBSWY3DPEHPK3PXP"}
+        )
+        resp_liberado = self.client.get(reverse("colaborador_list"))
+        self.assertEqual(resp_liberado.status_code, 200)
+
+        # Usuário Auditor (sem permissão de escrita e sem staff) não é forçado a ter MFA nesta fase
+        self.client.force_login(self.user_auditor)
+        resp_auditor = self.client.get(reverse("colaborador_list"))
+        self.assertEqual(resp_auditor.status_code, 200)
+
+    def test_54_comando_auditar_contas_identifica_e_desativa_orfaos(self):
+        """5.4: Comando auditar_contas lista contas sem grupos/MFA e desativa preventivamente com flag --desativar."""
+        from io import StringIO
+
+        usuario_orfa = User.objects.create_user(
+            username="conta.suspeita", email="suspeita@gmail.com", password="ComplexPassword123!"
+        )
+        self.assertTrue(usuario_orfa.is_active)
+
+        # Execução padrão (modo visualização)
+        out = StringIO()
+        call_command("auditar_contas", stdout=out)
+        conteudo = out.getvalue()
+        self.assertIn("conta.suspeita", conteudo)
+        self.assertIn("suspeita@gmail.com", conteudo)
+
+        # Conta ainda permanece ativa
+        usuario_orfa.refresh_from_db()
+        self.assertTrue(usuario_orfa.is_active)
+
+        # Execução com flag --desativar (contenção)
+        out_desativar = StringIO()
+        call_command("auditar_contas", "--desativar", stdout=out_desativar)
+        self.assertIn("Contenção Concluída", out_desativar.getvalue())
+
+        # Conta deve ter sido desativada no banco
+        usuario_orfa.refresh_from_db()
+        self.assertFalse(usuario_orfa.is_active)

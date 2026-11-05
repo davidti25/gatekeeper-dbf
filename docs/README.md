@@ -24,9 +24,11 @@ Bem-vindo à Biblioteca de Documentação do **GateKeeper-DBF**. Este repositór
 * [2026-11-05 - Plano de Ação: Fase 2 — Plataforma & Hardening de Configuração](biblioteca/2026-11/2026-11-05-fase-2-plataforma-e-hardening-de-configuracao.md)
 * [2026-11-05 - Plano de Ação: Fase 3 — Identidade Forte (MFA & Rate Limiting)](biblioteca/2026-11/2026-11-05-fase-3-identidade-forte-mfa-e-rate-limiting.md)
 * [2026-11-05 - Plano de Ação: Fase 4 — Qualidade & DevSecOps](biblioteca/2026-11/2026-11-05-fase-4-qualidade-e-devsecops.md)
+* [2026-11-05 - Plano de Ação v2: Fase 5 — Fechamento de Portas & Catraca RBAC](biblioteca/2026-11/2026-11-05-fase-5-fechamento-de-portas-e-catraca-rbac.md)
 
 ---
 
 ## 🛠️ Planos de Ação
 
-* [2026-11-05 - Plano de Ação: Segurança & Qualidade](action-plan/2026-11-05-plano-de-acao-seguranca-e-qualidade.md)
+* [2026-11-05 - Plano de Ação: Segurança & Qualidade (Fases 0–4)](action-plan/2026-11-05-plano-de-acao-seguranca-e-qualidade.md)
+* [2026-11-05 - Plano de Ação v2: Brechas Pós-Implementação (Fases 5–9)](action-plan/2026-11-05-plano-de-acao-v2-brechas-pos-implementacao.md)

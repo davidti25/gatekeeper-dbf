@@ -74,6 +74,8 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.LoginRequiredMiddleware",
     # Middleware obrigatório do allauth para gerenciamento de sessão e rate limits
     "allauth.account.middleware.AccountMiddleware",
+    # Fase 5.3: MFA obrigatório para perfis com permissão de escrita / staff (CIS 6.5)
+    "apps.governance.middleware.RequireMFAMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     # Middleware para capturar o usuário que realizou a alteração no histórico
@@ -88,6 +90,7 @@ LOGOUT_REDIRECT_URL = "login"
 # ==============================================================================
 # Identidade Forte, MFA e Rate Limiting (allauth - Fase 3.1 / CIS 6.5)
 # ==============================================================================
+ACCOUNT_ADAPTER = "apps.governance.adapters.NoSignupAccountAdapter"
 ACCOUNT_LOGIN_METHODS = {"email", "username"}
 ACCOUNT_SIGNUP_FIELDS = ["email*", "username*", "password1*", "password2*"]
 ACCOUNT_EMAIL_VERIFICATION = "none"
