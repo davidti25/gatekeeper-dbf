@@ -37,6 +37,10 @@
    * Removida a criação de superusuário com senha estática em [`apps/governance/management/commands/seed_governance.py`](file:///home/davidbf/dev/GateKeeper-DBF/apps/governance/management/commands/seed_governance.py).
    * Implementada trava de segurança que recusa a execução do `seed_governance` caso `DEBUG=False`.
 
+6. **Acesso Master / Root de Desenvolvimento:**
+   * Criado o comando dedicado [`apps/governance/management/commands/create_root.py`](file:///home/davidbf/dev/GateKeeper-DBF/apps/governance/management/commands/create_root.py) (`python manage.py create_root`).
+   * Provisiona a conta master `root` com privilégios de superusuário e associação ao grupo `Gestor SecOps` para testes e desenvolvimento do sistema, com trava estrita de recusa em produção (`DEBUG=False`).
+
 ---
 
 ## 2. 🧪 Validação Automatizada de Segurança
@@ -47,10 +51,11 @@ Atualizada a suíte em [`apps/governance/tests.py`](file:///home/davidbf/dev/Gat
 * `test_03_segregacao_funcoes_auditor_apenas_leitura`: Auditor visualiza painéis, mas recebe 403 Forbidden ao tentar iniciar offboarding.
 * `test_04_analista_ti_executa_offboarding_com_nao_repudio_estrito`: Analista executa offboarding e seu ID é gravado com não-repúdio.
 * `test_05_neutralizacao_stored_xss_data_confirm`: Payload malicioso de XSS não é inserido em manipuladores executáveis.
+* `test_06_master_root_acesso_total`: Validação de acesso universal irrestrito da conta master `root`.
 
 **Resultado dos testes:**
 ```text
-Ran 5 tests in 6.628s - OK (100% aprovado)
+Ran 6 tests in 8.283s - OK (100% aprovado)
 ```
 
 ---
@@ -62,3 +67,4 @@ Avançar para a **Fase 1 (Integridade da Auditoria & Regras de Negócio)** do Pl
 * Adicionar `django-simple-history` para rastreamento de versões.
 * Implementar camada de serviço transacional `services.revogar_item()`.
 * Exigir evidência obrigatória para sistemas críticos/LGPD.
+

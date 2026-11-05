@@ -216,3 +216,28 @@ class GovernanceSecurityAndModelTests(TestCase):
         self.assertNotContains(resp, 'onclick="return confirm')
         # Deve utilizar o atributo desacoplado data-confirm
         self.assertContains(resp, 'data-confirm=')
+
+    def test_06_master_root_acesso_total(self):
+        """Valida que o usuário master root (superuser) possui acesso e execução irrestrita em todos os módulos."""
+        root_user = User.objects.create_superuser(
+            username='root.test',
+            email='root.test@gatekeeper.local',
+            password='RootDev2026!'
+        )
+        self.client.force_login(root_user)
+
+        # Acesso às telas principais
+        self.assertEqual(self.client.get(reverse('dashboard')).status_code, 200)
+        self.assertEqual(self.client.get(reverse('colaborador_list')).status_code, 200)
+        self.assertEqual(self.client.get(reverse('sistema_list')).status_code, 200)
+        self.assertEqual(self.client.get(reverse('matriz_acesso')).status_code, 200)
+
+        # Execução de ação privilegiada
+        resp = self.client.post(
+            reverse('iniciar_offboarding', kwargs={'pk': self.colaborador.pk}),
+            {'motivo_desligamento': 'Root override test'}
+        )
+        self.assertEqual(resp.status_code, 302)
+        processo = ProcessoOffboarding.objects.get(colaborador=self.colaborador)
+        self.assertEqual(processo.responsavel_ti, root_user)
+
