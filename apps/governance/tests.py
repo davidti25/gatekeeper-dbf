@@ -37,7 +37,7 @@ from .models import (
     Sistema,
     VinculoAcesso,
 )
-from .services import revogar_item_checklist
+from .services import iniciar_offboarding, revogar_item_checklist
 
 User = get_user_model()
 
@@ -973,3 +973,238 @@ class Phase5EmergencyEntryProtectionTests(TestCase):
         # Conta deve ter sido desativada no banco
         usuario_orfa.refresh_from_db()
         self.assertFalse(usuario_orfa.is_active)
+
+
+class Phase6OffboardingIntegrityAndStateMachineTests(TestCase):
+    """
+    Testes de Integridade & Regras de Negócio para Fase 6: Fluxo de Offboarding (Plano v2).
+
+    Cobre:
+    - 6.1: Máquina de estados explícita: FALHA aceita retry (FALHA -> REVOGADO) concluindo o processo.
+    - 6.1: Transições inválidas bloqueadas (REVOGADO é final; PENDENTE nunca é destino).
+    - 6.2: 'Não Aplicável' encerra o vínculo (impede acesso ATIVO órfão) e exige justificativa >= 20 caracteres.
+    - 6.2: Permissão exclusiva para 'marcar_nao_aplicavel' reservada ao Gestor SecOps.
+    - 6.3: Concorrência e atomicidade no iniciar_offboarding() evitando duplicações.
+    - 6.4: Relatório executivo à prova de contradição com alerta visual de inconsistência.
+    """
+
+    def setUp(self):
+        self.client = Client()
+
+        self.grupo_analista = Group.objects.get(name="Analista TI")
+        self.grupo_gestor = Group.objects.get(name="Gestor SecOps")
+
+        self.user_analista = User.objects.create_user(
+            username="analista.fase6", email="analista.fase6@empresa.com.br", password="ComplexPassword123!"
+        )
+        self.user_analista.groups.add(self.grupo_analista)
+        Authenticator.objects.create(
+            user=self.user_analista, type=Authenticator.Type.TOTP, data={"secret": "JBSWY3DPEHPK3PXP"}
+        )
+
+        self.user_gestor = User.objects.create_user(
+            username="gestor.fase6", email="gestor.fase6@empresa.com.br", password="ComplexPassword123!", is_staff=True
+        )
+        self.user_gestor.groups.add(self.grupo_gestor)
+        Authenticator.objects.create(
+            user=self.user_gestor, type=Authenticator.Type.TOTP, data={"secret": "JBSWY3DPEHPK3PXP"}
+        )
+
+        self.depto = Departamento.objects.create(nome="Segurança da Informação", sigla="SEC")
+        self.cargo = Cargo.objects.create(nome="Analista de Incidentes", departamento=self.depto)
+        self.localidade = Localidade.objects.create(
+            nome="Fortaleza SOC", codigo="FOR-01", cidade="Fortaleza", estado="CE"
+        )
+
+        self.colaborador = Colaborador.objects.create(
+            nome_completo="Juliana Investigada",
+            matricula="MAT-OFF-F6",
+            email_corporativo="juliana.f6@empresa.com.br",
+            departamento=self.depto,
+            cargo=self.cargo,
+            localidade=self.localidade,
+            data_admissao=timezone.localdate(),
+            status=Colaborador.StatusColaborador.ATIVO,
+        )
+
+        self.sistema = Sistema.objects.create(
+            nome="AWS Cloud Production",
+            tipo=Sistema.TipoSistema.SAAS,
+            criticidade=Sistema.Criticidade.CRITICA,
+            tipo_autenticacao=Sistema.TipoAutenticacao.INDIVIDUAL,
+            armazena_dados_lgpd=True,
+        )
+
+        self.vinculo = VinculoAcesso.objects.create(
+            colaborador=self.colaborador,
+            sistema=self.sistema,
+            identificador_conta="juliana.aws",
+            status=VinculoAcesso.StatusAcesso.ATIVO,
+            concedido_por=self.user_gestor,
+        )
+
+        self.processo, _ = iniciar_offboarding(
+            colaborador_id=self.colaborador.pk,
+            responsavel=self.user_analista,
+            motivo="Desligamento Fase 6",
+        )
+        self.item = self.processo.itens_checklist.first()
+
+    def test_61_maquina_estados_retry_apos_falha_conclui_processo(self):
+        """6.1: Item com FALHA aceita nova tentativa (FALHA -> REVOGADO) e conclui o processo."""
+        # 1. Primeira tentativa resulta em FALHA (ex: API da AWS indisponível)
+        item_falha, proc_pendente = revogar_item_checklist(
+            item_id=self.item.pk,
+            responsavel=self.user_analista,
+            evidencia="API Timeout AWS Endpoint",
+            observacao="Tentativa falhou devido a timeout externo",
+            status=ItemChecklistOffboarding.StatusItem.FALHA,
+        )
+        self.assertEqual(item_falha.status, ItemChecklistOffboarding.StatusItem.FALHA)
+        self.assertEqual(proc_pendente.status, ProcessoOffboarding.StatusOffboarding.PENDENTE)
+
+        # 2. Nova tentativa após restauração do serviço transita para REVOGADO
+        item_revogado, proc_concluido = revogar_item_checklist(
+            item_id=self.item.pk,
+            responsavel=self.user_analista,
+            evidencia="Ticket AWS IAM #90219 - Chave excluída",
+            observacao="Conta desativada com sucesso na segunda tentativa",
+            status=ItemChecklistOffboarding.StatusItem.REVOGADO,
+        )
+        self.assertEqual(item_revogado.status, ItemChecklistOffboarding.StatusItem.REVOGADO)
+        self.assertEqual(proc_concluido.status, ProcessoOffboarding.StatusOffboarding.CONCLUIDO)
+        self.assertIsNotNone(proc_concluido.concluido_em)
+
+    def test_61_maquina_estados_transicoes_invalidas_recusadas(self):
+        """6.1: Transições ilegais na máquina de estados são bloqueadas com ValidationError."""
+        # Item inicial é PENDENTE: não pode transitar para PENDENTE
+        with self.assertRaises(ValidationError) as ctx:
+            revogar_item_checklist(
+                item_id=self.item.pk,
+                responsavel=self.user_analista,
+                evidencia="Evidência",
+                status=ItemChecklistOffboarding.StatusItem.PENDENTE,
+            )
+        self.assertIn("Transição de status não permitida", str(ctx.exception))
+
+        # Resolve o item para REVOGADO (estado terminal)
+        revogar_item_checklist(
+            item_id=self.item.pk,
+            responsavel=self.user_analista,
+            evidencia="Ticket ITSM #12345",
+            status=ItemChecklistOffboarding.StatusItem.REVOGADO,
+        )
+
+        # Tentar reabrir item REVOGADO deve falhar
+        with self.assertRaises(ValidationError) as ctx2:
+            revogar_item_checklist(
+                item_id=self.item.pk,
+                responsavel=self.user_analista,
+                evidencia="Tentando mudar",
+                status=ItemChecklistOffboarding.StatusItem.FALHA,
+            )
+        self.assertIn("Transição de status não permitida", str(ctx2.exception))
+
+    def test_62_nao_aplicavel_encerramento_vinculo_e_justificativa(self):
+        """6.2: Não Aplicável exige justificativa >= 20 chars e encerra o vínculo (nenhum vínculo ativo residual)."""
+        # Sem justificativa ou com menos de 20 caracteres -> Rejeitado
+        with self.assertRaises(ValidationError) as ctx:
+            revogar_item_checklist(
+                item_id=self.item.pk,
+                responsavel=self.user_gestor,
+                evidencia="Sem evidência",
+                observacao="Curta",
+                status=ItemChecklistOffboarding.StatusItem.NAO_APLICAVEL,
+            )
+        self.assertIn("mínimo de 20 caracteres", str(ctx.exception))
+
+        # Com justificativa detalhada (>= 20 chars) -> Sucesso
+        justificativa_valida = "Colaborador nunca utilizou console AWS; conta inexistente no IAM"
+        item, proc = revogar_item_checklist(
+            item_id=self.item.pk,
+            responsavel=self.user_gestor,
+            evidencia="",
+            observacao=justificativa_valida,
+            status=ItemChecklistOffboarding.StatusItem.NAO_APLICAVEL,
+        )
+        self.assertEqual(item.status, ItemChecklistOffboarding.StatusItem.NAO_APLICAVEL)
+        self.assertEqual(proc.status, ProcessoOffboarding.StatusOffboarding.CONCLUIDO)
+
+        # Invariante: o vínculo correspondente não pode permanecer ATIVO
+        self.vinculo.refresh_from_db()
+        self.assertEqual(self.vinculo.status, VinculoAcesso.StatusAcesso.REVOGADO)
+        self.assertIn("Não aplicável:", self.vinculo.justificativa)
+
+    def test_62_permissao_exclusiva_gestor_marcar_nao_aplicavel(self):
+        """6.2: Analista TI sem permissão é barrado ao tentar marcar Não Aplicável; Gestor SecOps é autorizado."""
+        revogar_url = reverse("revogar_item_offboarding", kwargs={"pk": self.processo.pk, "item_id": self.item.pk})
+
+        # 1. Analista TI tenta postar NAO_APLICAVEL
+        self.client.force_login(self.user_analista)
+        resp_analista = self.client.post(
+            revogar_url,
+            {
+                "status": ItemChecklistOffboarding.StatusItem.NAO_APLICAVEL,
+                "evidencia_revogacao": "",
+                "observacao": "Justificativa detalhada de mais de 20 caracteres aqui",
+            },
+            follow=True,
+        )
+        self.assertContains(resp_analista, "Apenas o Gestor SecOps possui autorização")
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, ItemChecklistOffboarding.StatusItem.PENDENTE)
+
+        # 2. Gestor SecOps posta NAO_APLICAVEL com justificativa
+        self.client.force_login(self.user_gestor)
+        resp_gestor = self.client.post(
+            revogar_url,
+            {
+                "status": ItemChecklistOffboarding.StatusItem.NAO_APLICAVEL,
+                "evidencia_revogacao": "",
+                "observacao": "Justificativa detalhada de mais de 20 caracteres autorizada pelo CISO",
+            },
+            follow=True,
+        )
+        self.assertContains(resp_gestor, "resolvidos")
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, ItemChecklistOffboarding.StatusItem.NAO_APLICAVEL)
+
+    def test_63_iniciar_offboarding_atomico_previne_duplicidade(self):
+        """6.3: iniciar_offboarding atômico com select_for_update retorna processo existente sem duplicar."""
+        proc1, criado1 = iniciar_offboarding(
+            colaborador_id=self.colaborador.pk,
+            responsavel=self.user_gestor,
+            motivo="Offboarding primário",
+        )
+        self.assertFalse(criado1)
+        self.assertEqual(proc1.pk, self.processo.pk)
+        self.assertEqual(self.colaborador.processos_offboarding.count(), 1)
+
+    def test_64_relatorio_alerta_inconsistencia_se_houver_vinculo_ativo(self):
+        """6.4: Relatório executivo detecta quebra de invariante (acesso ATIVO residual) e exibe alerta visual."""
+        # Conclui o item
+        revogar_item_checklist(
+            item_id=self.item.pk,
+            responsavel=self.user_gestor,
+            evidencia="Ticket GLPI #999",
+            status=ItemChecklistOffboarding.StatusItem.REVOGADO,
+        )
+        self.processo.refresh_from_db()
+        self.assertEqual(self.processo.status, ProcessoOffboarding.StatusOffboarding.CONCLUIDO)
+
+        # Relatório consistente (normal)
+        self.client.force_login(self.user_gestor)
+        relatorio_url = reverse("offboarding_relatorio", kwargs={"pk": self.processo.pk})
+        resp_normal = self.client.get(relatorio_url)
+        self.assertEqual(resp_normal.status_code, 200)
+        self.assertFalse(resp_normal.context["inconsistente"])
+        self.assertNotContains(resp_normal, "PROCESSO INCONSISTENTE")
+
+        # Simula inconsistência residual forçando status ATIVO no vínculo
+        VinculoAcesso.objects.filter(pk=self.vinculo.pk).update(status=VinculoAcesso.StatusAcesso.ATIVO)
+
+        resp_inconsistente = self.client.get(relatorio_url)
+        self.assertEqual(resp_inconsistente.status_code, 200)
+        self.assertTrue(resp_inconsistente.context["inconsistente"])
+        self.assertContains(resp_inconsistente, "PROCESSO INCONSISTENTE — ACESSO ATIVO DETECTADO")
+        self.assertContains(resp_inconsistente, "INCONSISTENTE (ACESSO ATIVO)")

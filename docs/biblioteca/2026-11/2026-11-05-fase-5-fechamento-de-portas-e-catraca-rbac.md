@@ -63,3 +63,4 @@
   * `apps/governance/services.py`: **98%**
   * `apps/governance/views.py`: **85%**
   * Média do módulo: **88%** (acima da meta de $\ge 85\%$).
+

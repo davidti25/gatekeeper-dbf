@@ -52,9 +52,30 @@
                 <div class="text-right text-xs text-slate-500 font-mono">
                     <p><strong>Protocolo:</strong> GK-OFF-{{ processo.pk|stringformat:"05d" }}</p>
                     <p><strong>Emissão:</strong> {{ gerado_em|date:"d/m/Y H:i:s" }}</p>
-                    <p><strong>Status:</strong> <span class="font-bold text-emerald-600">{{ processo.get_status_display }}</span></p>
+                    <p><strong>Status:</strong> 
+                        {% if inconsistente %}
+                            <span class="font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-300">INCONSISTENTE (ACESSO ATIVO)</span>
+                        {% elif processo.status == 'CONCLUIDO' %}
+                            <span class="font-bold text-emerald-600">{{ processo.get_status_display }}</span>
+                        {% else %}
+                            <span class="font-bold text-amber-600">{{ processo.get_status_display }}</span>
+                        {% endif %}
+                    </p>
                 </div>
             </div>
+
+            {% if inconsistente %}
+            <!-- Inconsistency Alert (Fase 6.4) -->
+            <div class="p-4 rounded-xl bg-rose-50 border-2 border-rose-500 text-xs text-rose-900 space-y-1.5 shadow-sm">
+                <div class="flex items-center space-x-2 text-rose-700 font-bold text-sm">
+                    <i data-lucide="alert-octagon" class="w-5 h-5 shrink-0"></i>
+                    <span>ALERTA DE SEGURANÇA: PROCESSO INCONSISTENTE — ACESSO ATIVO DETECTADO</span>
+                </div>
+                <p class="leading-relaxed">
+                    <strong>Atenção Auditoria & Compliance:</strong> Foram identificados vínculos de acesso com status <strong>ATIVO</strong> ainda associados a contas listadas neste processo de desligamento. Este documento oficial <strong>não certifica a revogação integral</strong> perante as normas CIS 5.5 e LGPD até que todas as contas lógicas sejam devidamente revogadas no diretório IAM.
+                </p>
+            </div>
+            {% endif %}
 
             <!-- Compliance Box -->
             <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1">

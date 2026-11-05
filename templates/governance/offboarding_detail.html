@@ -175,67 +175,86 @@
 
                     <!-- Right: Action Form or Audit Confirmation -->
                     <div class="lg:w-80">
-                        {% if item.status != 'PENDENTE' %}
-                            <!-- Already Resolved Audit Record -->
-                            <div class="p-3.5 rounded-lg {% if item.status == 'REVOGADO' %}bg-emerald-950/30 border border-emerald-800/40{% elif item.status == 'FALHA' %}bg-rose-950/30 border border-rose-800/40{% else %}bg-slate-900/60 border border-slate-800{% endif %} text-xs space-y-2">
-                                <div class="flex items-center space-x-1.5 {% if item.status == 'REVOGADO' %}text-emerald-400{% elif item.status == 'FALHA' %}text-rose-400{% else %}text-slate-400{% endif %} font-semibold">
+                        {% if item.status == 'REVOGADO' or item.status == 'NAO_APLICAVEL' %}
+                            <!-- Already Resolved Audit Record (Final State) -->
+                            <div class="p-3.5 rounded-lg {% if item.status == 'REVOGADO' %}bg-emerald-950/30 border border-emerald-800/40{% else %}bg-slate-900/60 border border-slate-800{% endif %} text-xs space-y-2">
+                                <div class="flex items-center space-x-1.5 {% if item.status == 'REVOGADO' %}text-emerald-400{% else %}text-slate-400{% endif %} font-semibold">
                                     {% if item.status == 'REVOGADO' %}
                                         <i data-lucide="check-circle" class="w-4 h-4"></i>
                                         <span>Revogação Auditada & Confirmada</span>
-                                    {% elif item.status == 'FALHA' %}
-                                        <i data-lucide="alert-triangle" class="w-4 h-4"></i>
-                                        <span>Falha Registrada no Encerramento</span>
                                     {% else %}
                                         <i data-lucide="minus-circle" class="w-4 h-4"></i>
-                                        <span>Item Não Aplicável</span>
+                                        <span>Item Não Aplicável (Auditado)</span>
                                     {% endif %}
                                 </div>
                                 <div class="text-[11px] text-slate-300 space-y-1 font-mono">
                                     <div><span class="text-slate-500">Data/Hora:</span> {{ item.data_revogacao|date:"d/m/Y H:i:s" }}</div>
                                     <div><span class="text-slate-500">Responsável:</span> {{ item.responsavel_revogacao.username|default:"SecOps" }}</div>
                                     {% if item.evidencia_revogacao %}
-                                    <div class="mt-1 pt-1 border-t {% if item.status == 'REVOGADO' %}border-emerald-900/40{% elif item.status == 'FALHA' %}border-rose-900/40{% else %}border-slate-800{% endif %}">
+                                    <div class="mt-1 pt-1 border-t {% if item.status == 'REVOGADO' %}border-emerald-900/40{% else %}border-slate-800{% endif %}">
                                         <span class="text-slate-500 block">Evidência:</span>
-                                        <span class="{% if item.status == 'REVOGADO' %}text-emerald-300{% elif item.status == 'FALHA' %}text-rose-300{% else %}text-slate-300{% endif %} font-sans text-xs">{{ item.evidencia_revogacao }}</span>
+                                        <span class="{% if item.status == 'REVOGADO' %}text-emerald-300{% else %}text-slate-300{% endif %} font-sans text-xs">{{ item.evidencia_revogacao }}</span>
                                     </div>
                                     {% endif %}
                                     {% if item.observacao %}
-                                    <div class="mt-1 pt-1 border-t {% if item.status == 'REVOGADO' %}border-emerald-900/40{% elif item.status == 'FALHA' %}border-rose-900/40{% else %}border-slate-800{% endif %}">
-                                        <span class="text-slate-500 block">Observação:</span>
+                                    <div class="mt-1 pt-1 border-t {% if item.status == 'REVOGADO' %}border-emerald-900/40{% else %}border-slate-800{% endif %}">
+                                        <span class="text-slate-500 block">Justificativa / Obs:</span>
                                         <span class="text-slate-300 font-sans text-xs">{{ item.observacao }}</span>
                                     </div>
                                     {% endif %}
                                 </div>
                             </div>
                         {% else %}
-                            <!-- Pending: Form to Revoke Access -->
-                            <form method="post" action="{% url 'revogar_item_offboarding' processo.pk item.pk %}" class="p-4 rounded-xl bg-slate-950/80 border border-slate-700/80 space-y-3">
-                                {% csrf_token %}
-                                <div class="text-xs font-semibold text-white flex items-center space-x-1.5">
-                                    <i data-lucide="shield" class="w-4 h-4 text-rose-400"></i>
-                                    <span>Registrar Ação no Checklist</span>
+                            <!-- Action Form: Pending or Retry after Failure (Fase 6.1) -->
+                            <div class="space-y-3">
+                                {% if item.status == 'FALHA' %}
+                                <div class="p-3 rounded-xl bg-rose-950/40 border border-rose-800/60 text-xs space-y-1.5">
+                                    <div class="flex items-center space-x-1.5 text-rose-400 font-semibold">
+                                        <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0"></i>
+                                        <span>Falha Registrada na Tentativa Anterior</span>
+                                    </div>
+                                    <div class="text-[11px] text-slate-300 space-y-0.5 font-mono">
+                                        <div><span class="text-slate-500">Última Tentativa:</span> {{ item.data_revogacao|date:"d/m/Y H:i:s" }}</div>
+                                        <div><span class="text-slate-500">Operador:</span> {{ item.responsavel_revogacao.username|default:"SecOps" }}</div>
+                                        {% if item.evidencia_revogacao %}
+                                        <div class="truncate"><span class="text-slate-500">Motivo:</span> {{ item.evidencia_revogacao }}</div>
+                                        {% endif %}
+                                    </div>
                                 </div>
-                                <div>
-                                    <label class="block text-[11px] text-slate-400 mb-1">Ação / Status</label>
-                                    <select name="status" class="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white focus:outline-none focus:ring-1 focus:ring-sky-500">
-                                        <option value="REVOGADO" selected>Revogado com Sucesso</option>
-                                        <option value="FALHA">Falha / Bloqueado com Erro</option>
-                                        <option value="NAO_APLICAVEL">Não Aplicável</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label class="block text-[11px] text-slate-400 mb-1">Evidência / ID de Chamado (Obrigatório em Críticos/LGPD)</label>
-                                    <input type="text" name="evidencia_revogacao" placeholder="Ex: Ticket GLPI #4582 / Conta desativada no AD" class="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500">
-                                </div>
-                                <div>
-                                    <label class="block text-[11px] text-slate-400 mb-1">Observações Técnicas (Opcional)</label>
-                                    <input type="text" name="observacao" placeholder="Ex: Backup de arquivos executado" class="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500">
-                                </div>
-                                <button type="submit" class="w-full py-2 px-3 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white transition flex items-center justify-center space-x-1.5 shadow-md shadow-rose-600/20">
-                                    <i data-lucide="check" class="w-3.5 h-3.5"></i>
-                                    <span>Confirmar Ação de Offboarding</span>
-                                </button>
-                            </form>
+                                {% endif %}
+
+                                <form method="post" action="{% url 'revogar_item_offboarding' processo.pk item.pk %}" class="p-4 rounded-xl bg-slate-950/80 border border-slate-700/80 space-y-3">
+                                    {% csrf_token %}
+                                    <div class="text-xs font-semibold text-white flex items-center space-x-1.5">
+                                        <i data-lucide="shield" class="w-4 h-4 text-rose-400"></i>
+                                        <span>{% if item.status == 'FALHA' %}Nova Tentativa de Revogação{% else %}Registrar Ação no Checklist{% endif %}</span>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[11px] text-slate-400 mb-1">Ação / Status de Destino</label>
+                                        <select name="status" class="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white focus:outline-none focus:ring-1 focus:ring-sky-500">
+                                            <option value="REVOGADO" selected>Revogado com Sucesso</option>
+                                            {% if item.status == 'PENDENTE' %}
+                                            <option value="FALHA">Falha / Bloqueado com Erro</option>
+                                            {% endif %}
+                                            {% if perms.governance.marcar_nao_aplicavel %}
+                                            <option value="NAO_APLICAVEL">Não Aplicável (Gestor SecOps / Justificativa ≥ 20 chars)</option>
+                                            {% endif %}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[11px] text-slate-400 mb-1">Evidência / ID de Chamado (Obrigatório em Críticos/LGPD)</label>
+                                        <input type="text" name="evidencia_revogacao" placeholder="Ex: Ticket GLPI #4582 / Conta desativada no AD" class="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[11px] text-slate-400 mb-1">Observações Técnicas / Justificativa</label>
+                                        <input type="text" name="observacao" placeholder="Ex: Backup de arquivos executado (ou justificativa para Não Aplicável)" class="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500">
+                                    </div>
+                                    <button type="submit" class="w-full py-2 px-3 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white transition flex items-center justify-center space-x-1.5 shadow-md shadow-rose-600/20">
+                                        <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                                        <span>{% if item.status == 'FALHA' %}Confirmar Nova Tentativa{% else %}Confirmar Ação de Offboarding{% endif %}</span>
+                                    </button>
+                                </form>
+                            </div>
                         {% endif %}
                     </div>
 

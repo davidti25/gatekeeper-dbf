@@ -493,6 +493,9 @@ class ItemChecklistOffboarding(models.Model):
         verbose_name = "Item de Checklist de Offboarding"
         verbose_name_plural = "Itens de Checklist de Offboarding"
         ordering = ["processo", "vinculo_acesso__sistema__nome"]
+        permissions = [
+            ("marcar_nao_aplicavel", "Pode marcar item de checklist como Não Aplicável"),
+        ]
 
     def __str__(self):
         return f"[{self.get_status_display()}] {self.vinculo_acesso.sistema.nome} ({self.vinculo_acesso.identificador_conta})"

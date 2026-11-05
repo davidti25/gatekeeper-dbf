@@ -30,7 +30,7 @@ from .models import (
     Sistema,
     VinculoAcesso,
 )
-from .services import revogar_item_checklist
+from .services import iniciar_offboarding, revogar_item_checklist
 
 logger = logging.getLogger("gatekeeper.audit")
 
@@ -168,66 +168,42 @@ class ColaboradorDetailView(PermissionRequiredMixin, DetailView):
 @permission_required("governance.iniciar_offboarding", raise_exception=True)
 def iniciar_offboarding_view(request, pk):
     """
-    Inicia o fluxo formal de offboarding para um colaborador.
+    Inicia o fluxo formal de offboarding para um colaborador via serviço atômico (Fase 6.3).
     Exige permissão estrita 'governance.iniciar_offboarding' (Analista TI / Gestor SecOps).
     Garante não-repúdio absoluto: o responsável é estritamente request.user.
-    Fase 1: Suporte a recontratação, desligamento imediato para evitar concessões e itens para todos os acessos não-revogados.
     """
     if request.method != "POST":
         return redirect("colaborador_detail", pk=pk)
 
-    colaborador = get_object_or_404(Colaborador, pk=pk)
+    motivo = request.POST.get("motivo_desligamento", "Desligamento Formal")
+    try:
+        processo, criado = iniciar_offboarding(
+            colaborador_id=pk,
+            responsavel=request.user,
+            motivo=motivo,
+        )
+    except Colaborador.DoesNotExist:
+        messages.error(request, "Colaborador não encontrado.")
+        return redirect("colaborador_list")
+    except ValidationError as e:
+        messages.error(request, str(e.message if hasattr(e, "message") else e))
+        return redirect("colaborador_detail", pk=pk)
 
-    # Evita duplicação de processos ativos para o mesmo colaborador
-    processo_ativo = colaborador.processos_offboarding.filter(
-        status__in=[ProcessoOffboarding.StatusOffboarding.INICIADO, ProcessoOffboarding.StatusOffboarding.PENDENTE]
-    ).first()
-    if processo_ativo:
+    if not criado:
         messages.warning(
-            request, f"O colaborador {colaborador.nome_completo} já possui um processo de offboarding em andamento."
+            request,
+            f"O colaborador {processo.colaborador.nome_completo} já possui um processo de offboarding em andamento.",
         )
-        return redirect("offboarding_detail", pk=processo_ativo.pk)
+        return redirect("offboarding_detail", pk=processo.pk)
 
-    # Não-repúdio: operador estrito logado
-    responsavel = request.user
-
-    # Imediatamente marca o colaborador como DESLIGADO (para evitar novas concessões de acesso durante o processo)
-    colaborador.status = Colaborador.StatusColaborador.DESLIGADO
-    if not colaborador.data_desligamento:
-        colaborador.data_desligamento = timezone.localdate()
-    colaborador.save()
-
-    # Cria o processo formal
-    processo = ProcessoOffboarding.objects.create(
-        colaborador=colaborador,
-        responsavel_ti=responsavel,
-        status=ProcessoOffboarding.StatusOffboarding.INICIADO,
-        observacoes=request.POST.get("motivo_desligamento", "Desligamento Formal"),
-    )
-
-    # Gera os itens do checklist para todos os acessos que não estejam revogados (ATIVO, BLOQUEADO)
-    acessos_a_revogar = colaborador.vinculos_acesso.exclude(status=VinculoAcesso.StatusAcesso.REVOGADO)
-    for vinculo in acessos_a_revogar:
-        ItemChecklistOffboarding.objects.create(processo=processo, vinculo_acesso=vinculo)
-
-    # Se o colaborador não possuía nenhum acesso, conclui imediatamente
-    if not acessos_a_revogar.exists():
-        processo.status = ProcessoOffboarding.StatusOffboarding.CONCLUIDO
-        processo.concluido_em = timezone.now()
-        processo.save()
-        logger.info(
-            f"OFFBOARDING_PROCESS_INITIATED: colaborador='{colaborador.nome_completo}' operador='{responsavel.username}' motivo='{processo.observacoes}' total_itens=0 (concluido)"
-        )
+    if processo.status == ProcessoOffboarding.StatusOffboarding.CONCLUIDO:
         messages.success(
-            request, f"Offboarding de {colaborador.nome_completo} concluído (não possuía acessos vinculados)."
+            request, f"Offboarding de {processo.colaborador.nome_completo} concluído (não possuía acessos vinculados)."
         )
     else:
-        logger.info(
-            f"OFFBOARDING_PROCESS_INITIATED: colaborador='{colaborador.nome_completo}' operador='{responsavel.username}' motivo='{processo.observacoes}' total_itens={acessos_a_revogar.count()}"
-        )
         messages.success(
             request,
-            f"Processo de Offboarding iniciado para {colaborador.nome_completo}. {acessos_a_revogar.count()} acessos pendentes de revogação.",
+            f"Processo de Offboarding iniciado para {processo.colaborador.nome_completo}. {processo.total_itens} acesso(s) pendente(s) de revogação.",
         )
 
     return redirect("offboarding_detail", pk=processo.pk)
@@ -297,7 +273,7 @@ def revogar_item_offboarding_view(request, pk, item_id):
     processo = get_object_or_404(ProcessoOffboarding, pk=pk)
     item = get_object_or_404(ItemChecklistOffboarding, pk=item_id, processo=processo)
 
-    form = RevogacaoItemForm(request.POST, item=item)
+    form = RevogacaoItemForm(request.POST, item=item, user=request.user)
     if not form.is_valid():
         for errors in form.errors.values():
             for error in errors:
@@ -347,10 +323,15 @@ class OffboardingRelatorioView(PermissionRequiredMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["itens"] = self.object.itens_checklist.select_related(
+        itens = self.object.itens_checklist.select_related(
             "vinculo_acesso__sistema", "vinculo_acesso__perfil_acesso", "responsavel_revogacao"
         )
+        context["itens"] = itens
         context["gerado_em"] = timezone.now()
+        # Fase 6.4: Invariante de integridade - verifica se há algum vínculo ativo neste processo
+        context["inconsistente"] = self.object.itens_checklist.filter(
+            vinculo_acesso__status=VinculoAcesso.StatusAcesso.ATIVO
+        ).exists()
         return context
 
 
