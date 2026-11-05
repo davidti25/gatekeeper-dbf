@@ -23,6 +23,7 @@ Bem-vindo à Biblioteca de Documentação do **GateKeeper-DBF**. Este repositór
 * [2026-11-05 - Plano de Ação: Fase 1 — Integridade da Auditoria & Regras de Negócio](biblioteca/2026-11/2026-11-05-fase-1-integridade-auditoria-e-regras-de-negocio.md)
 * [2026-11-05 - Plano de Ação: Fase 2 — Plataforma & Hardening de Configuração](biblioteca/2026-11/2026-11-05-fase-2-plataforma-e-hardening-de-configuracao.md)
 * [2026-11-05 - Plano de Ação: Fase 3 — Identidade Forte (MFA & Rate Limiting)](biblioteca/2026-11/2026-11-05-fase-3-identidade-forte-mfa-e-rate-limiting.md)
+* [2026-11-05 - Plano de Ação: Fase 4 — Qualidade & DevSecOps](biblioteca/2026-11/2026-11-05-fase-4-qualidade-e-devsecops.md)
 
 ---
 

@@ -1,0 +1,75 @@
+name: GateKeeper-DBF CI/CD & DevSecOps Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  devsecops-pipeline:
+    name: DevSecOps Quality & Security Checks
+    runs-on: ubuntu-latest
+
+    env:
+      DJANGO_SETTINGS_MODULE: core.settings
+      SECRET_KEY: ci-test-insecure-key-do-not-use-in-production-1234567890
+      DEBUG: 'False'
+      ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+      TIME_ZONE: America/Bahia
+
+    steps:
+      - name: 📥 Checkout do Repositório
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🐍 Configurar Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: 'pip'
+
+      - name: 📦 Instalar Dependências Auditadas (com SHA-256 Hashes)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: 🧹 Linting & Formatação (Ruff)
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: 🛡️ Análise Estática de Segurança (Bandit SAST)
+        run: |
+          bandit -c pyproject.toml -r apps core
+
+      - name: 🔍 Auditoria de Vulnerabilidades em Dependências (pip-audit)
+        run: |
+          pip-audit -r requirements.txt
+
+      - name: 🔑 Verificação de Vazamento de Segredos (Gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🗄️ Verificação de Integridade das Migrações
+        run: |
+          python manage.py makemigrations --check --dry-run
+
+      - name: 🧪 Execução de Testes com Cobertura (Coverage >= 85%)
+        run: |
+          coverage run manage.py test apps.governance
+          coverage report
+
+      - name: 🚀 Verificação de Hardening para Produção (check --deploy)
+        run: |
+          SECURE_HSTS_SECONDS=31536000 \
+          SECURE_SSL_REDIRECT=True \
+          SESSION_COOKIE_SECURE=True \
+          CSRF_COOKIE_SECURE=True \
+          python manage.py check --deploy

@@ -14,21 +14,23 @@ Uso:
     python manage.py seed_governance
 """
 
-from django.core.management.base import BaseCommand
-from django.contrib.auth import get_user_model
-from django.utils import timezone
-from datetime import timedelta, date
+from datetime import date, timedelta
+
 from django.conf import settings
+from django.contrib.auth import get_user_model
+from django.core.management.base import BaseCommand
+from django.utils import timezone
+
 from apps.governance.models import (
-    Localidade,
-    Departamento,
     Cargo,
-    Sistema,
-    PerfilAcesso,
     Colaborador,
-    VinculoAcesso,
-    ProcessoOffboarding,
+    Departamento,
     ItemChecklistOffboarding,
+    Localidade,
+    PerfilAcesso,
+    ProcessoOffboarding,
+    Sistema,
+    VinculoAcesso,
 )
 
 User = get_user_model()
@@ -40,7 +42,11 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         # Proteção DevSecOps: Bloqueio estrito em produção
         if not settings.DEBUG:
-            self.stderr.write(self.style.ERROR("❌ ERRO DE SEGURANÇA: seed_governance é exclusivo para ambientes de desenvolvimento (DEBUG=True)."))
+            self.stderr.write(
+                self.style.ERROR(
+                    "❌ ERRO DE SEGURANÇA: seed_governance é exclusivo para ambientes de desenvolvimento (DEBUG=True)."
+                )
+            )
             return
 
         self.stdout.write(self.style.NOTICE("Iniciando carga de dados base de Governança & IAM..."))
@@ -52,7 +58,7 @@ class Command(BaseCommand):
                 username="sistema.automacao",
                 email="automacao@gatekeeper.local",
                 is_staff=False,
-                is_active=False  # Conta desativada e sem senha (impossível efetuar login)
+                is_active=False,  # Conta desativada e sem senha (impossível efetuar login)
             )
             admin_user.set_unusable_password()
             admin_user.save()
@@ -65,26 +71,28 @@ class Command(BaseCommand):
         ]
         localidades = {}
         for loc in localidades_data:
-            obj, _ = Localidade.objects.get_or_create(
-                codigo=loc["codigo"],
-                defaults=loc
-            )
+            obj, _ = Localidade.objects.get_or_create(codigo=loc["codigo"], defaults=loc)
             localidades[loc["codigo"]] = obj
 
         # 2. Departamentos
         deptos_data = [
-            {"nome": "Tecnologia da Informação & SecOps", "sigla": "TI", "descricao": "Infraestrutura, Segurança da Informação e Suporte"},
+            {
+                "nome": "Tecnologia da Informação & SecOps",
+                "sigla": "TI",
+                "descricao": "Infraestrutura, Segurança da Informação e Suporte",
+            },
             {"nome": "Recursos Humanos & DP", "sigla": "RH", "descricao": "Gestão de Pessoas, Admissão e Desligamento"},
-            {"nome": "Financeiro & Controladoria", "sigla": "FIN", "descricao": "Contas a Pagar/Receber, Tesouraria e Faturamento"},
+            {
+                "nome": "Financeiro & Controladoria",
+                "sigla": "FIN",
+                "descricao": "Contas a Pagar/Receber, Tesouraria e Faturamento",
+            },
             {"nome": "Comercial & Vendas", "sigla": "COM", "descricao": "Prospecção, Atendimento e Negociações"},
             {"nome": "Operações & Logística", "sigla": "LOG", "descricao": "Cadeia de Suprimentos e Distribuição"},
         ]
         deptos = {}
         for dep in deptos_data:
-            obj, _ = Departamento.objects.get_or_create(
-                sigla=dep["sigla"],
-                defaults=dep
-            )
+            obj, _ = Departamento.objects.get_or_create(sigla=dep["sigla"], defaults=dep)
             deptos[dep["sigla"]] = obj
 
         # 3. Cargos
@@ -101,11 +109,7 @@ class Command(BaseCommand):
         ]
         cargos = {}
         for car in cargos_data:
-            obj, _ = Cargo.objects.get_or_create(
-                nome=car["nome"],
-                departamento=car["departamento"],
-                defaults=car
-            )
+            obj, _ = Cargo.objects.get_or_create(nome=car["nome"], departamento=car["departamento"], defaults=car)
             cargos[car["nome"]] = obj
 
         # 4. Sistemas Corporativos & Perfis
@@ -123,7 +127,7 @@ class Command(BaseCommand):
                 "perfis": [
                     ("Usuário Padrão", PerfilAcesso.NivelPrivilegio.OPERADOR),
                     ("Super Administrador", PerfilAcesso.NivelPrivilegio.ADMIN),
-                ]
+                ],
             },
             {
                 "nome": "VPN Corporativa (WireGuard / OpenVPN)",
@@ -137,7 +141,7 @@ class Command(BaseCommand):
                 "perfis": [
                     ("Acesso Rede Corporativa (Colaborador)", PerfilAcesso.NivelPrivilegio.OPERADOR),
                     ("Acesso DMZ & Gerenciamento (TI)", PerfilAcesso.NivelPrivilegio.ADMIN),
-                ]
+                ],
             },
             {
                 "nome": "Roteadores MikroTik (Winbox / SSH)",
@@ -151,7 +155,7 @@ class Command(BaseCommand):
                 "perfis": [
                     ("Read-Only (Monitoramento NOC)", PerfilAcesso.NivelPrivilegio.LEITURA),
                     ("Full Admin (Engenharia de Redes)", PerfilAcesso.NivelPrivilegio.ADMIN),
-                ]
+                ],
             },
             {
                 "nome": "ERP Corporativo (Faturamento & Financeiro)",
@@ -167,7 +171,7 @@ class Command(BaseCommand):
                     ("Operador Financeiro / Contas a Pagar", PerfilAcesso.NivelPrivilegio.OPERADOR),
                     ("Gestor Financeiro / Aprovação de Pagamentos", PerfilAcesso.NivelPrivilegio.SUPERVISOR),
                     ("Administrador do Sistema", PerfilAcesso.NivelPrivilegio.ADMIN),
-                ]
+                ],
             },
             {
                 "nome": "Servidor de Arquivos SMB (Storage Local)",
@@ -181,7 +185,7 @@ class Command(BaseCommand):
                 "perfis": [
                     ("Leitura Compartilhada", PerfilAcesso.NivelPrivilegio.LEITURA),
                     ("Modificação / Escrita do Setor", PerfilAcesso.NivelPrivilegio.OPERADOR),
-                ]
+                ],
             },
         ]
 
@@ -189,17 +193,12 @@ class Command(BaseCommand):
         perfis_map = {}
         for sis_info in sistemas_data:
             perfis = sis_info.pop("perfis")
-            sis_obj, _ = Sistema.objects.get_or_create(
-                nome=sis_info["nome"],
-                defaults=sis_info
-            )
+            sis_obj, _ = Sistema.objects.get_or_create(nome=sis_info["nome"], defaults=sis_info)
             sistemas[sis_obj.nome] = sis_obj
 
             for p_nome, p_nivel in perfis:
                 p_obj, _ = PerfilAcesso.objects.get_or_create(
-                    sistema=sis_obj,
-                    nome=p_nome,
-                    defaults={"nivel_privilegio": p_nivel}
+                    sistema=sis_obj, nome=p_nome, defaults={"nivel_privilegio": p_nivel}
                 )
                 perfis_map[(sis_obj.nome, p_nome)] = p_obj
 
@@ -250,10 +249,7 @@ class Command(BaseCommand):
 
         colabs = {}
         for c_data in colabs_data:
-            c_obj, _ = Colaborador.objects.get_or_create(
-                email_corporativo=c_data["email_corporativo"],
-                defaults=c_data
-            )
+            c_obj, _ = Colaborador.objects.get_or_create(email_corporativo=c_data["email_corporativo"], defaults=c_data)
             colabs[c_obj.email_corporativo] = c_obj
 
         # 6. Concessões de Acessos (Matriz RBAC)
@@ -262,19 +258,30 @@ class Command(BaseCommand):
             colaborador=colabs["lucas.silveira@empresa.com.br"],
             sistema=sistemas["Google Workspace (Gmail / Drive / Meet)"],
             identificador_conta="lucas.silveira@empresa.com.br",
-            defaults={"perfil_acesso": perfis_map[("Google Workspace (Gmail / Drive / Meet)", "Usuário Padrão")], "concedido_por": admin_user}
+            defaults={
+                "perfil_acesso": perfis_map[("Google Workspace (Gmail / Drive / Meet)", "Usuário Padrão")],
+                "concedido_por": admin_user,
+            },
         )
         VinculoAcesso.objects.get_or_create(
             colaborador=colabs["lucas.silveira@empresa.com.br"],
             sistema=sistemas["VPN Corporativa (WireGuard / OpenVPN)"],
             identificador_conta="lucas.secops",
-            defaults={"perfil_acesso": perfis_map[("VPN Corporativa (WireGuard / OpenVPN)", "Acesso DMZ & Gerenciamento (TI)")], "concedido_por": admin_user}
+            defaults={
+                "perfil_acesso": perfis_map[
+                    ("VPN Corporativa (WireGuard / OpenVPN)", "Acesso DMZ & Gerenciamento (TI)")
+                ],
+                "concedido_por": admin_user,
+            },
         )
         VinculoAcesso.objects.get_or_create(
             colaborador=colabs["lucas.silveira@empresa.com.br"],
             sistema=sistemas["Roteadores MikroTik (Winbox / SSH)"],
             identificador_conta="lucas.silveira",
-            defaults={"perfil_acesso": perfis_map[("Roteadores MikroTik (Winbox / SSH)", "Full Admin (Engenharia de Redes)")], "concedido_por": admin_user}
+            defaults={
+                "perfil_acesso": perfis_map[("Roteadores MikroTik (Winbox / SSH)", "Full Admin (Engenharia de Redes)")],
+                "concedido_por": admin_user,
+            },
         )
 
         # Mariana (Financeiro): Google Workspace, ERP, File Server
@@ -282,19 +289,32 @@ class Command(BaseCommand):
             colaborador=colabs["mariana.souza@empresa.com.br"],
             sistema=sistemas["Google Workspace (Gmail / Drive / Meet)"],
             identificador_conta="mariana.souza@empresa.com.br",
-            defaults={"perfil_acesso": perfis_map[("Google Workspace (Gmail / Drive / Meet)", "Usuário Padrão")], "concedido_por": admin_user}
+            defaults={
+                "perfil_acesso": perfis_map[("Google Workspace (Gmail / Drive / Meet)", "Usuário Padrão")],
+                "concedido_por": admin_user,
+            },
         )
         VinculoAcesso.objects.get_or_create(
             colaborador=colabs["mariana.souza@empresa.com.br"],
             sistema=sistemas["ERP Corporativo (Faturamento & Financeiro)"],
             identificador_conta="mariana.souza",
-            defaults={"perfil_acesso": perfis_map[("ERP Corporativo (Faturamento & Financeiro)", "Gestor Financeiro / Aprovação de Pagamentos")], "concedido_por": admin_user}
+            defaults={
+                "perfil_acesso": perfis_map[
+                    ("ERP Corporativo (Faturamento & Financeiro)", "Gestor Financeiro / Aprovação de Pagamentos")
+                ],
+                "concedido_por": admin_user,
+            },
         )
         VinculoAcesso.objects.get_or_create(
             colaborador=colabs["mariana.souza@empresa.com.br"],
             sistema=sistemas["Servidor de Arquivos SMB (Storage Local)"],
             identificador_conta="msouza",
-            defaults={"perfil_acesso": perfis_map[("Servidor de Arquivos SMB (Storage Local)", "Modificação / Escrita do Setor")], "concedido_por": admin_user}
+            defaults={
+                "perfil_acesso": perfis_map[
+                    ("Servidor de Arquivos SMB (Storage Local)", "Modificação / Escrita do Setor")
+                ],
+                "concedido_por": admin_user,
+            },
         )
 
         # Rodrigo (Comercial - Offboarding em Andamento): Google Workspace, VPN, ERP
@@ -302,13 +322,21 @@ class Command(BaseCommand):
             colaborador=colabs["rodrigo.mendes@empresa.com.br"],
             sistema=sistemas["Google Workspace (Gmail / Drive / Meet)"],
             identificador_conta="rodrigo.mendes@empresa.com.br",
-            defaults={"perfil_acesso": perfis_map[("Google Workspace (Gmail / Drive / Meet)", "Usuário Padrão")], "concedido_por": admin_user}
+            defaults={
+                "perfil_acesso": perfis_map[("Google Workspace (Gmail / Drive / Meet)", "Usuário Padrão")],
+                "concedido_por": admin_user,
+            },
         )
         v_rodrigo_vpn, _ = VinculoAcesso.objects.get_or_create(
             colaborador=colabs["rodrigo.mendes@empresa.com.br"],
             sistema=sistemas["VPN Corporativa (WireGuard / OpenVPN)"],
             identificador_conta="rodrigo.mendes",
-            defaults={"perfil_acesso": perfis_map[("VPN Corporativa (WireGuard / OpenVPN)", "Acesso Rede Corporativa (Colaborador)")], "concedido_por": admin_user}
+            defaults={
+                "perfil_acesso": perfis_map[
+                    ("VPN Corporativa (WireGuard / OpenVPN)", "Acesso Rede Corporativa (Colaborador)")
+                ],
+                "concedido_por": admin_user,
+            },
         )
 
         # Processo de Offboarding para Rodrigo (1 de 2 revogados)
@@ -318,7 +346,7 @@ class Command(BaseCommand):
                 "responsavel_ti": admin_user,
                 "status": ProcessoOffboarding.StatusOffboarding.INICIADO,
                 "observacoes": "Desligamento por iniciativa do colaborador",
-            }
+            },
         )
         # Item 1: VPN revogada
         item_vpn, _ = ItemChecklistOffboarding.objects.get_or_create(
@@ -330,7 +358,7 @@ class Command(BaseCommand):
                 "data_revogacao": timezone.now() - timedelta(hours=2),
                 "responsavel_revogacao": admin_user,
                 "evidencia_revogacao": "Chave pública WireGuard desativada via Ansible. Chamado GLPI #8821",
-            }
+            },
         )
         # Atualiza vínculo da VPN de Rodrigo como revogado
         v_rodrigo_vpn.status = VinculoAcesso.StatusAcesso.REVOGADO
@@ -345,7 +373,7 @@ class Command(BaseCommand):
             defaults={
                 "status": ItemChecklistOffboarding.StatusItem.PENDENTE,
                 "revogado": False,
-            }
+            },
         )
 
         # Beatriz (RH - Offboarding 100% Concluído e Auditado)
@@ -359,7 +387,7 @@ class Command(BaseCommand):
                 "data_revogacao": timezone.now() - timedelta(days=6),
                 "revogado_por": admin_user,
                 "justificativa": "Offboarding concluído",
-            }
+            },
         )
         proc_beatriz, _ = ProcessoOffboarding.objects.get_or_create(
             colaborador=colabs["beatriz.lima@empresa.com.br"],
@@ -368,7 +396,7 @@ class Command(BaseCommand):
                 "status": ProcessoOffboarding.StatusOffboarding.CONCLUIDO,
                 "concluido_em": timezone.now() - timedelta(days=6),
                 "observacoes": "Término de contrato",
-            }
+            },
         )
         ItemChecklistOffboarding.objects.get_or_create(
             processo=proc_beatriz,
@@ -379,7 +407,9 @@ class Command(BaseCommand):
                 "data_revogacao": timezone.now() - timedelta(days=6),
                 "responsavel_revogacao": admin_user,
                 "evidencia_revogacao": "Conta Google suspensa e backup de e-mails concluído. Chamado GLPI #8750",
-            }
+            },
         )
 
-        self.stdout.write(self.style.SUCCESS("✅ Carga completa com demonstração de Governança & Offboarding concluída com sucesso!"))
+        self.stdout.write(
+            self.style.SUCCESS("✅ Carga completa com demonstração de Governança & Offboarding concluída com sucesso!")
+        )

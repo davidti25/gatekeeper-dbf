@@ -6,24 +6,30 @@ e garantia de idempotência no encerramento de acessos.
 """
 
 import logging
+
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
-from django.core.exceptions import ValidationError
-from .models import ItemChecklistOffboarding, VinculoAcesso, ProcessoOffboarding, Colaborador
 
-logger = logging.getLogger('gatekeeper.audit')
+from .models import Colaborador, ItemChecklistOffboarding, ProcessoOffboarding, VinculoAcesso
+
+logger = logging.getLogger("gatekeeper.audit")
 
 
 @transaction.atomic
-def revogar_item_checklist(item_id, responsavel, evidencia, observacao="", status=ItemChecklistOffboarding.StatusItem.REVOGADO):
+def revogar_item_checklist(
+    item_id, responsavel, evidencia, observacao="", status=ItemChecklistOffboarding.StatusItem.REVOGADO
+):
     """
     Executa a revogação atômica de um item do checklist de offboarding com bloqueio pessimista de linha.
     Garante não-repúdio e idempotência (rejeita sobrescrever um item já resolvido).
     """
     # Bloqueio pessimista de linha para evitar condições de corrida (double submit)
-    item = ItemChecklistOffboarding.objects.select_for_update().select_related(
-        'processo', 'vinculo_acesso__sistema', 'processo__colaborador'
-    ).get(pk=item_id)
+    item = (
+        ItemChecklistOffboarding.objects.select_for_update()
+        .select_related("processo", "vinculo_acesso__sistema", "processo__colaborador")
+        .get(pk=item_id)
+    )
 
     # Idempotência: impede re-revogação sobrescrevendo histórico prévio
     if item.status != ItemChecklistOffboarding.StatusItem.PENDENTE:
@@ -33,7 +39,7 @@ def revogar_item_checklist(item_id, responsavel, evidencia, observacao="", statu
 
     # 1. Atualizar o Item do Checklist
     item.status = status
-    item.revogado = (status == ItemChecklistOffboarding.StatusItem.REVOGADO)
+    item.revogado = status == ItemChecklistOffboarding.StatusItem.REVOGADO
     item.data_revogacao = agora
     item.responsavel_revogacao = responsavel
     item.evidencia_revogacao = evidencia
@@ -78,7 +84,8 @@ def revogar_item_checklist(item_id, responsavel, evidencia, observacao="", statu
             colab.data_desligamento = timezone.localdate()
         colab.save()
 
-        logger.info(f"OFFBOARDING_PROCESS_CONCLUDED: colaborador='{colab.nome_completo}' operador='{responsavel.username}'")
+        logger.info(
+            f"OFFBOARDING_PROCESS_CONCLUDED: colaborador='{colab.nome_completo}' operador='{responsavel.username}'"
+        )
 
     return item, processo
-

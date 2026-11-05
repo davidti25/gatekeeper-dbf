@@ -1,0 +1,20 @@
+# ==============================================================================
+# GateKeeper-DBF - Dependências de Desenvolvimento, Qualidade & DevSecOps (Fase 4)
+# ==============================================================================
+
+-c requirements.txt
+
+# Ferramenta de Cobertura de Código para Testes Unitários e de Segurança (Fase 4.1)
+coverage>=7.6.0
+
+# Linter e Formatador Ultrarrápido em Rust (Fase 4.2)
+ruff>=0.9.0
+
+# Análise Estática de Segurança para Código Python (SAST - Fase 4.2)
+bandit>=1.8.0
+
+# Auditoria de Vulnerabilidades em Dependências Conhecidas (Fase 4.2 / CVEs)
+pip-audit>=2.8.0
+
+# Gerenciamento de Hooks de Git para Prevenção de Falhas e Vazamento de Segredos
+pre-commit>=4.1.0

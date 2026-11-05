@@ -6,10 +6,10 @@ Uso:
     python manage.py create_root
 """
 
-from django.core.management.base import BaseCommand
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from django.conf import settings
+from django.core.management.base import BaseCommand
 
 User = get_user_model()
 
@@ -19,11 +19,16 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         if not settings.DEBUG:
-            self.stderr.write(self.style.ERROR("❌ ERRO DE SEGURANÇA: Este comando é restrito ao ambiente de desenvolvimento (DEBUG=True)."))
+            self.stderr.write(
+                self.style.ERROR(
+                    "❌ ERRO DE SEGURANÇA: Este comando é restrito ao ambiente de desenvolvimento (DEBUG=True)."
+                )
+            )
             return
 
+        # Senha padrão de bootstrap restrita estritamente ao ambiente de desenvolvimento (DEBUG=True)
         username = "root"
-        password = "RootDev2026!"
+        password = "RootDev2026!"  # nosec B105
         email = "root@gatekeeper.local"
 
         user, created = User.objects.get_or_create(
@@ -32,7 +37,7 @@ class Command(BaseCommand):
                 "email": email,
                 "is_staff": True,
                 "is_superuser": True,
-            }
+            },
         )
         user.set_password(password)
         user.is_staff = True
@@ -49,4 +54,3 @@ class Command(BaseCommand):
         self.stdout.write(f"   • Usuário: {username}")
         self.stdout.write(f"   • Senha:   {password}")
         self.stdout.write("   • Acesso:  Superuser (bypass total de permissões / estilo root)")
-

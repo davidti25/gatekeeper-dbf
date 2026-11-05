@@ -75,3 +75,11 @@ local_logs/
 *~
 .DS_Store
 
+# --- Testes, Cobertura & Caches ---
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.ruff_cache/
+
+

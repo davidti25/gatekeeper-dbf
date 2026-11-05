@@ -1,0 +1,47 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: gatekeeper-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gatekeeper_db}
+      POSTGRES_USER: ${POSTGRES_USER:-gatekeeper}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gatekeeper_secure_password_2026}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gatekeeper} -d ${POSTGRES_DB:-gatekeeper_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - gatekeeper-net
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gatekeeper-web
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DEBUG: "False"
+      SECRET_KEY: ${SECRET_KEY:-generate-a-secure-secret-key-for-production-min-50-chars}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      DATABASE_URL: postgres://${POSTGRES_USER:-gatekeeper}:${POSTGRES_PASSWORD:-gatekeeper_secure_password_2026}@db:5432/${POSTGRES_DB:-gatekeeper_db}
+      TIME_ZONE: America/Bahia
+      ADMIN_URL: ${ADMIN_URL:-admin/}
+    ports:
+      - "8000:8000"
+    networks:
+      - gatekeeper-net
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  gatekeeper-net:
+    driver: bridge

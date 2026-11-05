@@ -10,27 +10,29 @@ Cobre:
 - Fase 1 (Integridade & Auditoria): Simple-History, Proteção onDelete, Concorrência atômica, Validação LGPD
 - Fase 2 (Hardening & Plataforma): Local-Only Assets, WhiteNoise, Strict CSP sem inline, Cookies de Sessão, Logs SOC
 - Fase 3 (Identidade Forte): MFA / 2FA (TOTP), Rate Limiting anti-bruteforce, Blindagem admin.site.login
+- Fase 4 (Qualidade & DevSecOps): Anti-N+1 Queries, Bloqueio de Acessos a Desligados, Cobertura Rigorosa
 """
 
-from django.test import TestCase, Client, override_settings
-from django.urls import reverse
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from django.utils import timezone
-from django.db.models import ProtectedError
 from django.core.exceptions import ValidationError
-from .models import (
-    Localidade,
-    Departamento,
-    Cargo,
-    Sistema,
-    PerfilAcesso,
-    Colaborador,
-    VinculoAcesso,
-    ProcessoOffboarding,
-    ItemChecklistOffboarding,
-)
+from django.db.models import ProtectedError
+from django.test import Client, TestCase, override_settings
+from django.urls import reverse
+from django.utils import timezone
+
 from .forms import RevogacaoItemForm
+from .models import (
+    Cargo,
+    Colaborador,
+    Departamento,
+    ItemChecklistOffboarding,
+    Localidade,
+    PerfilAcesso,
+    ProcessoOffboarding,
+    Sistema,
+    VinculoAcesso,
+)
 from .services import revogar_item_checklist
 
 User = get_user_model()
@@ -41,123 +43,106 @@ class GovernanceSecurityAndModelTests(TestCase):
         self.client = Client()
 
         # Grupos RBAC criados pela migração 0003
-        self.grupo_auditor = Group.objects.get(name='Auditor')
-        self.grupo_analista = Group.objects.get(name='Analista TI')
-        self.grupo_gestor = Group.objects.get(name='Gestor SecOps')
+        self.grupo_auditor = Group.objects.get(name="Auditor")
+        self.grupo_analista = Group.objects.get(name="Analista TI")
+        self.grupo_gestor = Group.objects.get(name="Gestor SecOps")
 
         # Usuários por Perfil
         self.user_auditor = User.objects.create_user(
-            username='auditor.externo',
-            email='auditor@empresa.com.br',
-            password='ComplexPassword123!'
+            username="auditor.externo", email="auditor@empresa.com.br", password="ComplexPassword123!"
         )
         self.user_auditor.groups.add(self.grupo_auditor)
 
         self.user_analista = User.objects.create_user(
-            username='analista.secops',
-            email='secops@empresa.com.br',
-            password='ComplexPassword123!'
+            username="analista.secops", email="secops@empresa.com.br", password="ComplexPassword123!"
         )
         self.user_analista.groups.add(self.grupo_analista)
 
         self.user_gestor = User.objects.create_user(
-            username='gestor.ciso',
-            email='ciso@empresa.com.br',
-            password='ComplexPassword123!',
-            is_staff=True
+            username="gestor.ciso", email="ciso@empresa.com.br", password="ComplexPassword123!", is_staff=True
         )
         self.user_gestor.groups.add(self.grupo_gestor)
 
         # Localidade & Setor
         self.matriz = Localidade.objects.create(
-            nome='Sede São Paulo',
-            codigo='SP-MATRIZ',
-            cidade='São Paulo',
-            estado='SP'
+            nome="Sede São Paulo", codigo="SP-MATRIZ", cidade="São Paulo", estado="SP"
         )
         self.ti = Departamento.objects.create(
-            nome='Tecnologia da Informação',
-            sigla='TI',
-            descricao='Setor de TI e Cibersegurança'
+            nome="Tecnologia da Informação", sigla="TI", descricao="Setor de TI e Cibersegurança"
         )
-        self.cargo = Cargo.objects.create(
-            nome='Analista de SOC',
-            departamento=self.ti
-        )
+        self.cargo = Cargo.objects.create(nome="Analista de SOC", departamento=self.ti)
 
         # Sistemas
         self.vpn = Sistema.objects.create(
-            nome='VPN Corporativa WireGuard',
+            nome="VPN Corporativa WireGuard",
             tipo=Sistema.TipoSistema.VPN,
             criticidade=Sistema.Criticidade.ALTA,
             armazena_dados_lgpd=False,
-            gestor_responsavel='Equipe de SecOps',
-            instrucoes_revogacao='Remover chave pública do servidor WireGuard.'
+            gestor_responsavel="Equipe de SecOps",
+            instrucoes_revogacao="Remover chave pública do servidor WireGuard.",
         )
         self.perfil_vpn = PerfilAcesso.objects.create(
-            sistema=self.vpn,
-            nome='Acesso Full SOC',
-            nivel_privilegio=PerfilAcesso.NivelPrivilegio.ADMIN
+            sistema=self.vpn, nome="Acesso Full SOC", nivel_privilegio=PerfilAcesso.NivelPrivilegio.ADMIN
         )
 
         self.erp = Sistema.objects.create(
-            nome='ERP Corporativo',
+            nome="ERP Corporativo",
             tipo=Sistema.TipoSistema.SAAS,
             criticidade=Sistema.Criticidade.CRITICA,
             armazena_dados_lgpd=True,
-            gestor_responsavel='TI Interna',
-            instrucoes_revogacao='Inativar cadastro do usuário no painel master.'
+            gestor_responsavel="TI Interna",
+            instrucoes_revogacao="Inativar cadastro do usuário no painel master.",
         )
 
         # Colaborador
         self.colaborador = Colaborador.objects.create(
-            nome_completo='Carlos Santos',
-            matricula='TI-0042',
-            email_corporativo='carlos.santos@empresa.com.br',
+            nome_completo="Carlos Santos",
+            matricula="TI-0042",
+            email_corporativo="carlos.santos@empresa.com.br",
             localidade=self.matriz,
             departamento=self.ti,
             cargo=self.cargo,
             status=Colaborador.StatusColaborador.ATIVO,
-            data_admissao=timezone.now().date()
+            data_admissao=timezone.now().date(),
         )
 
     def test_01_autenticacao_obrigatoria_redireciona_anonimos(self):
         """0.1: Garante que qualquer acesso anônimo é redirecionado para a tela de login (Secure by Default)."""
         rotas = [
-            reverse('dashboard'),
-            reverse('colaborador_list'),
-            reverse('colaborador_detail', kwargs={'pk': self.colaborador.pk}),
-            reverse('sistema_list'),
-            reverse('matriz_acesso'),
-            reverse('offboarding_list'),
+            reverse("dashboard"),
+            reverse("colaborador_list"),
+            reverse("colaborador_detail", kwargs={"pk": self.colaborador.pk}),
+            reverse("sistema_list"),
+            reverse("matriz_acesso"),
+            reverse("offboarding_list"),
         ]
 
         for rota in rotas:
             resp = self.client.get(rota)
             self.assertEqual(resp.status_code, 302, f"Rota {rota} permitiu acesso sem login!")
-            self.assertIn(reverse('login'), resp.headers['Location'])
+            self.assertIn(reverse("login"), resp.headers["Location"])
 
     def test_02_tela_de_login_disponivel_sem_autenticacao(self):
         """Garante que a tela de login está acessível publicamente com formulário CSRF e inputs."""
-        resp = self.client.get(reverse('login'))
+        resp = self.client.get(reverse("login"))
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'name="login"')
         self.assertContains(resp, 'name="password"')
-        self.assertContains(resp, 'csrfmiddlewaretoken')
+        self.assertContains(resp, "csrfmiddlewaretoken")
 
     def test_03_segregacao_funcoes_auditor_apenas_leitura(self):
         """0.2: Usuário do grupo Auditor visualiza painéis, mas é impedido de executar offboarding (403 Forbidden)."""
         self.client.force_login(self.user_auditor)
 
         # Leitura permitida
-        self.assertEqual(self.client.get(reverse('dashboard')).status_code, 200)
-        self.assertEqual(self.client.get(reverse('colaborador_list')).status_code, 200)
-        self.assertEqual(self.client.get(reverse('sistema_list')).status_code, 200)
+        self.assertEqual(self.client.get(reverse("dashboard")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("colaborador_list")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("sistema_list")).status_code, 200)
 
         # Escrita/Ação bloqueada com 403 Forbidden
         resp_iniciar = self.client.post(
-            reverse('iniciar_offboarding', kwargs={'pk': self.colaborador.pk}),
-            {'motivo_desligamento': 'Auditor tentando desligar'}
+            reverse("iniciar_offboarding", kwargs={"pk": self.colaborador.pk}),
+            {"motivo_desligamento": "Auditor tentando desligar"},
         )
         self.assertEqual(resp_iniciar.status_code, 403)
 
@@ -169,14 +154,14 @@ class GovernanceSecurityAndModelTests(TestCase):
         v = VinculoAcesso.objects.create(
             colaborador=self.colaborador,
             sistema=self.vpn,
-            identificador_conta='carlos.vpn',
-            concedido_por=self.user_gestor
+            identificador_conta="carlos.vpn",
+            concedido_por=self.user_gestor,
         )
 
         # Inicia Offboarding
         resp_iniciar = self.client.post(
-            reverse('iniciar_offboarding', kwargs={'pk': self.colaborador.pk}),
-            {'motivo_desligamento': 'Desligamento formal test'}
+            reverse("iniciar_offboarding", kwargs={"pk": self.colaborador.pk}),
+            {"motivo_desligamento": "Desligamento formal test"},
         )
         self.assertEqual(resp_iniciar.status_code, 302)
 
@@ -187,8 +172,8 @@ class GovernanceSecurityAndModelTests(TestCase):
         # Revoga item
         item = processo.itens_checklist.first()
         resp_revogar = self.client.post(
-            reverse('revogar_item_offboarding', kwargs={'pk': processo.pk, 'item_id': item.pk}),
-            {'evidencia_revogacao': 'Ticket GLPI #5555'}
+            reverse("revogar_item_offboarding", kwargs={"pk": processo.pk, "item_id": item.pk}),
+            {"evidencia_revogacao": "Ticket GLPI #5555"},
         )
         self.assertEqual(resp_revogar.status_code, 302)
 
@@ -213,36 +198,34 @@ class GovernanceSecurityAndModelTests(TestCase):
             departamento=self.ti,
             cargo=self.cargo,
             status=Colaborador.StatusColaborador.ATIVO,
-            data_admissao=timezone.now().date()
+            data_admissao=timezone.now().date(),
         )
 
-        resp = self.client.get(reverse('colaborador_detail', kwargs={'pk': colab_xss.pk}))
+        resp = self.client.get(reverse("colaborador_detail", kwargs={"pk": colab_xss.pk}))
         self.assertEqual(resp.status_code, 200)
 
         # Não deve haver onclick com código inline
         self.assertNotContains(resp, 'onclick="return confirm')
         # Deve utilizar o atributo desacoplado data-confirm
-        self.assertContains(resp, 'data-confirm=')
+        self.assertContains(resp, "data-confirm=")
 
     def test_06_master_root_acesso_total(self):
         """Valida que o usuário master root (superuser) possui acesso e execução irrestrita em todos os módulos."""
         root_user = User.objects.create_superuser(
-            username='root.test',
-            email='root.test@gatekeeper.local',
-            password='RootDev2026!'
+            username="root.test", email="root.test@gatekeeper.local", password="RootDev2026!"
         )
         self.client.force_login(root_user)
 
         # Acesso às telas principais
-        self.assertEqual(self.client.get(reverse('dashboard')).status_code, 200)
-        self.assertEqual(self.client.get(reverse('colaborador_list')).status_code, 200)
-        self.assertEqual(self.client.get(reverse('sistema_list')).status_code, 200)
-        self.assertEqual(self.client.get(reverse('matriz_acesso')).status_code, 200)
+        self.assertEqual(self.client.get(reverse("dashboard")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("colaborador_list")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("sistema_list")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("matriz_acesso")).status_code, 200)
 
         # Execução de ação privilegiada
         resp = self.client.post(
-            reverse('iniciar_offboarding', kwargs={'pk': self.colaborador.pk}),
-            {'motivo_desligamento': 'Root override test'}
+            reverse("iniciar_offboarding", kwargs={"pk": self.colaborador.pk}),
+            {"motivo_desligamento": "Root override test"},
         )
         self.assertEqual(resp.status_code, 302)
         processo = ProcessoOffboarding.objects.get(colaborador=self.colaborador)
@@ -259,58 +242,47 @@ class Phase1AuditAndIntegrityTests(TestCase):
     - 1.4: Validação estrita de evidências em sistemas críticos e escopo LGPD
     - 1.5: Suporte a recontratação (UniqueConstraint condicional)
     """
+
     def setUp(self):
         self.client = Client()
 
-        self.grupo_analista = Group.objects.get(name='Analista TI')
+        self.grupo_analista = Group.objects.get(name="Analista TI")
         self.user_analista = User.objects.create_user(
-            username='secops.analyst',
-            email='analyst@empresa.com.br',
-            password='ComplexPassword123!'
+            username="secops.analyst", email="analyst@empresa.com.br", password="ComplexPassword123!"
         )
         self.user_analista.groups.add(self.grupo_analista)
 
-        self.matriz = Localidade.objects.create(
-            nome='Filial Salvador',
-            codigo='SSA-01',
-            cidade='Salvador',
-            estado='BA'
-        )
+        self.matriz = Localidade.objects.create(nome="Filial Salvador", codigo="SSA-01", cidade="Salvador", estado="BA")
         self.depto = Departamento.objects.create(
-            nome='Operações Financeiras',
-            sigla='FIN',
-            descricao='Controladoria e Financeiro'
+            nome="Operações Financeiras", sigla="FIN", descricao="Controladoria e Financeiro"
         )
-        self.cargo = Cargo.objects.create(
-            nome='Analista Financeiro Pleno',
-            departamento=self.depto
-        )
+        self.cargo = Cargo.objects.create(nome="Analista Financeiro Pleno", departamento=self.depto)
 
         self.sistema_critico = Sistema.objects.create(
-            nome='Internet Banking PJ',
+            nome="Internet Banking PJ",
             tipo=Sistema.TipoSistema.SAAS,
             criticidade=Sistema.Criticidade.CRITICA,
             armazena_dados_lgpd=True,
-            gestor_responsavel='Segurança da Informação'
+            gestor_responsavel="Segurança da Informação",
         )
 
         self.sistema_interno = Sistema.objects.create(
-            nome='Wiki Interna Redmine',
+            nome="Wiki Interna Redmine",
             tipo=Sistema.TipoSistema.ONPREM,
             criticidade=Sistema.Criticidade.BAIXA,
             armazena_dados_lgpd=False,
-            gestor_responsavel='TI Suporte'
+            gestor_responsavel="TI Suporte",
         )
 
         self.colaborador = Colaborador.objects.create(
-            nome_completo='Mariana Oliveira',
-            matricula='FIN-8812',
-            email_corporativo='mariana.oliveira@empresa.com.br',
+            nome_completo="Mariana Oliveira",
+            matricula="FIN-8812",
+            email_corporativo="mariana.oliveira@empresa.com.br",
             localidade=self.matriz,
             departamento=self.depto,
             cargo=self.cargo,
             status=Colaborador.StatusColaborador.ATIVO,
-            data_admissao=timezone.now().date()
+            data_admissao=timezone.now().date(),
         )
 
     def test_10_protecao_exclusao_acidental_on_delete_protect(self):
@@ -318,8 +290,8 @@ class Phase1AuditAndIntegrityTests(TestCase):
         vinculo = VinculoAcesso.objects.create(
             colaborador=self.colaborador,
             sistema=self.sistema_interno,
-            identificador_conta='mariana.wiki',
-            concedido_por=self.user_analista
+            identificador_conta="mariana.wiki",
+            concedido_por=self.user_analista,
         )
 
         # Tentativa de exclusão do colaborador com vínculo deve falhar
@@ -330,12 +302,9 @@ class Phase1AuditAndIntegrityTests(TestCase):
         processo = ProcessoOffboarding.objects.create(
             colaborador=self.colaborador,
             responsavel_ti=self.user_analista,
-            status=ProcessoOffboarding.StatusOffboarding.INICIADO
+            status=ProcessoOffboarding.StatusOffboarding.INICIADO,
         )
-        item = ItemChecklistOffboarding.objects.create(
-            processo=processo,
-            vinculo_acesso=vinculo
-        )
+        ItemChecklistOffboarding.objects.create(processo=processo, vinculo_acesso=vinculo)
 
         # Tentativa de exclusão do vínculo com item no checklist deve falhar
         with self.assertRaises(ProtectedError):
@@ -347,14 +316,14 @@ class Phase1AuditAndIntegrityTests(TestCase):
         ProcessoOffboarding.objects.create(
             colaborador=self.colaborador,
             responsavel_ti=self.user_analista,
-            status=ProcessoOffboarding.StatusOffboarding.INICIADO
+            status=ProcessoOffboarding.StatusOffboarding.INICIADO,
         )
 
         novo_vinculo = VinculoAcesso(
             colaborador=self.colaborador,
             sistema=self.sistema_critico,
-            identificador_conta='mariana.banking',
-            concedido_por=self.user_analista
+            identificador_conta="mariana.banking",
+            concedido_por=self.user_analista,
         )
         with self.assertRaises(ValidationError) as ctx:
             novo_vinculo.clean()
@@ -367,8 +336,8 @@ class Phase1AuditAndIntegrityTests(TestCase):
         novo_vinculo_desligado = VinculoAcesso(
             colaborador=self.colaborador,
             sistema=self.sistema_interno,
-            identificador_conta='mariana.wiki2',
-            concedido_por=self.user_analista
+            identificador_conta="mariana.wiki2",
+            concedido_por=self.user_analista,
         )
         with self.assertRaises(ValidationError) as ctx:
             novo_vinculo_desligado.clean()
@@ -379,18 +348,15 @@ class Phase1AuditAndIntegrityTests(TestCase):
         vinculo = VinculoAcesso.objects.create(
             colaborador=self.colaborador,
             sistema=self.sistema_interno,
-            identificador_conta='mariana.wiki',
-            concedido_por=self.user_analista
+            identificador_conta="mariana.wiki",
+            concedido_por=self.user_analista,
         )
         processo = ProcessoOffboarding.objects.create(
             colaborador=self.colaborador,
             responsavel_ti=self.user_analista,
-            status=ProcessoOffboarding.StatusOffboarding.INICIADO
+            status=ProcessoOffboarding.StatusOffboarding.INICIADO,
         )
-        item = ItemChecklistOffboarding.objects.create(
-            processo=processo,
-            vinculo_acesso=vinculo
-        )
+        item = ItemChecklistOffboarding.objects.create(processo=processo, vinculo_acesso=vinculo)
 
         # 1. Primeira execução: Sucesso
         item_revogado, proc_atualizado = revogar_item_checklist(
@@ -398,7 +364,7 @@ class Phase1AuditAndIntegrityTests(TestCase):
             responsavel=self.user_analista,
             evidencia="Ticket ITSM #10293",
             observacao="Conta desativada",
-            status=ItemChecklistOffboarding.StatusItem.REVOGADO
+            status=ItemChecklistOffboarding.StatusItem.REVOGADO,
         )
         self.assertEqual(item_revogado.status, ItemChecklistOffboarding.StatusItem.REVOGADO)
         self.assertTrue(item_revogado.revogado)
@@ -410,7 +376,7 @@ class Phase1AuditAndIntegrityTests(TestCase):
                 item_id=item.pk,
                 responsavel=self.user_analista,
                 evidencia="Outro ticket",
-                status=ItemChecklistOffboarding.StatusItem.REVOGADO
+                status=ItemChecklistOffboarding.StatusItem.REVOGADO,
             )
         self.assertIn("já foi finalizado anteriormente", str(ctx.exception))
 
@@ -419,38 +385,27 @@ class Phase1AuditAndIntegrityTests(TestCase):
         vinculo_critico = VinculoAcesso.objects.create(
             colaborador=self.colaborador,
             sistema=self.sistema_critico,
-            identificador_conta='mariana.ib',
-            concedido_por=self.user_analista
+            identificador_conta="mariana.ib",
+            concedido_por=self.user_analista,
         )
-        processo = ProcessoOffboarding.objects.create(
-            colaborador=self.colaborador,
-            responsavel_ti=self.user_analista
-        )
-        item_critico = ItemChecklistOffboarding.objects.create(
-            processo=processo,
-            vinculo_acesso=vinculo_critico
-        )
+        processo = ProcessoOffboarding.objects.create(colaborador=self.colaborador, responsavel_ti=self.user_analista)
+        item_critico = ItemChecklistOffboarding.objects.create(processo=processo, vinculo_acesso=vinculo_critico)
 
         # 1. Sem evidência em sistema crítico/LGPD: Inválido
-        form_vazio = RevogacaoItemForm(
-            data={'status': 'REVOGADO', 'evidencia_revogacao': ''},
-            item=item_critico
-        )
+        form_vazio = RevogacaoItemForm(data={"status": "REVOGADO", "evidencia_revogacao": ""}, item=item_critico)
         self.assertFalse(form_vazio.is_valid())
-        self.assertIn('evidencia_revogacao', form_vazio.errors)
+        self.assertIn("evidencia_revogacao", form_vazio.errors)
 
         # 2. Com evidência genérica ("revogado manualmente"): Inválido
         form_generico = RevogacaoItemForm(
-            data={'status': 'REVOGADO', 'evidencia_revogacao': 'Revogado manualmente'},
-            item=item_critico
+            data={"status": "REVOGADO", "evidencia_revogacao": "Revogado manualmente"}, item=item_critico
         )
         self.assertFalse(form_generico.is_valid())
-        self.assertIn('evidencia_revogacao', form_generico.errors)
+        self.assertIn("evidencia_revogacao", form_generico.errors)
 
         # 3. Com evidência auditável (Ticket #...): Válido
         form_valido = RevogacaoItemForm(
-            data={'status': 'REVOGADO', 'evidencia_revogacao': 'Ticket GLPI #8841 - Chave revogada'},
-            item=item_critico
+            data={"status": "REVOGADO", "evidencia_revogacao": "Ticket GLPI #8841 - Chave revogada"}, item=item_critico
         )
         self.assertTrue(form_valido.is_valid())
 
@@ -473,7 +428,7 @@ class Phase1AuditAndIntegrityTests(TestCase):
             colaborador=self.colaborador,
             responsavel_ti=self.user_analista,
             status=ProcessoOffboarding.StatusOffboarding.CONCLUIDO,
-            concluido_em=timezone.now()
+            concluido_em=timezone.now(),
         )
 
         # Recontratação: Colaborador reativado
@@ -484,7 +439,7 @@ class Phase1AuditAndIntegrityTests(TestCase):
         processo_2 = ProcessoOffboarding.objects.create(
             colaborador=self.colaborador,
             responsavel_ti=self.user_analista,
-            status=ProcessoOffboarding.StatusOffboarding.INICIADO
+            status=ProcessoOffboarding.StatusOffboarding.INICIADO,
         )
         self.assertIsNotNone(processo_2.pk)
         self.assertNotEqual(processo_1.pk, processo_2.pk)
@@ -500,23 +455,22 @@ class Phase2PlatformAndHardeningTests(TestCase):
     - 2.4: Hardening de sessão, cookies e configurações de deploy
     - 2.4: Trilha de auditoria SOC em sinais de autenticação
     """
+
     def setUp(self):
         self.client = Client()
         self.user = User.objects.create_user(
-            username='soc.auditor',
-            email='soc@empresa.com.br',
-            password='ComplexPassword123!'
+            username="soc.auditor", email="soc@empresa.com.br", password="ComplexPassword123!"
         )
-        grupo_auditor = Group.objects.get(name='Auditor')
+        grupo_auditor = Group.objects.get(name="Auditor")
         self.user.groups.add(grupo_auditor)
 
     def test_20_csp_headers_sem_unsafe_inline(self):
         """2.3: Cabeçalho Content-Security-Policy presente e bloqueando inline scripts externos."""
-        resp = self.client.get(reverse('login'))
+        resp = self.client.get(reverse("login"))
         self.assertEqual(resp.status_code, 200)
 
-        self.assertIn('Content-Security-Policy', resp.headers)
-        csp = resp.headers['Content-Security-Policy']
+        self.assertIn("Content-Security-Policy", resp.headers)
+        csp = resp.headers["Content-Security-Policy"]
 
         # default-src 'self'
         self.assertIn("default-src 'self'", csp)
@@ -529,38 +483,38 @@ class Phase2PlatformAndHardeningTests(TestCase):
     def test_21_recursos_estaticos_locais_sem_cdns_externos(self):
         """2.3: Front-end servido 100% de static/ sem dependência de CDNs ou envio de dados/IP para terceiros (LGPD)."""
         self.client.force_login(self.user)
-        resp = self.client.get(reverse('dashboard'))
+        resp = self.client.get(reverse("dashboard"))
         self.assertEqual(resp.status_code, 200)
 
         # Não deve haver conexões externas para Google Fonts, CDN Tailwind ou Unpkg
-        self.assertNotContains(resp, 'cdn.tailwindcss.com')
-        self.assertNotContains(resp, 'unpkg.com')
-        self.assertNotContains(resp, 'fonts.googleapis.com')
-        self.assertNotContains(resp, 'fonts.gstatic.com')
+        self.assertNotContains(resp, "cdn.tailwindcss.com")
+        self.assertNotContains(resp, "unpkg.com")
+        self.assertNotContains(resp, "fonts.googleapis.com")
+        self.assertNotContains(resp, "fonts.gstatic.com")
 
         # Deve conter as rotas locais compiladas e servidas pelo WhiteNoise (com ou sem hash)
         content = resp.content.decode()
-        self.assertIn('/static/fonts/fonts.', content)
-        self.assertIn('/static/css/tailwind.min.', content)
-        self.assertIn('/static/vendor/lucide.min.', content)
-        self.assertIn('/static/js/app.', content)
+        self.assertIn("/static/fonts/fonts.", content)
+        self.assertIn("/static/css/tailwind.min.", content)
+        self.assertIn("/static/vendor/lucide.min.", content)
+        self.assertIn("/static/js/app.", content)
 
     def test_22_sessao_e_hardening_cookies(self):
         """2.4: Validação de cookies de sessão de 8 horas e isolamento HttpOnly."""
         from django.conf import settings
+
         self.assertTrue(settings.SESSION_COOKIE_HTTPONLY)
         self.assertTrue(settings.CSRF_COOKIE_HTTPONLY)
         self.assertEqual(settings.SESSION_COOKIE_AGE, 28800)
         self.assertTrue(settings.SESSION_EXPIRE_AT_BROWSER_CLOSE)
-        self.assertEqual(settings.X_FRAME_OPTIONS, 'DENY')
+        self.assertEqual(settings.X_FRAME_OPTIONS, "DENY")
         self.assertTrue(settings.SECURE_CONTENT_TYPE_NOSNIFF)
 
     def test_23_trilha_auditoria_soc_sinais(self):
         """2.4: Eventos de autenticação disparam logs estruturados para ingestão em SIEM."""
-        import logging
-        with self.assertLogs('gatekeeper.audit', level='INFO') as cm:
+        with self.assertLogs("gatekeeper.audit", level="INFO") as cm:
             # Login com sucesso
-            self.client.login(username='soc.auditor', password='ComplexPassword123!')
+            self.client.login(username="soc.auditor", password="ComplexPassword123!")
             # Logout
             self.client.logout()
 
@@ -585,47 +539,45 @@ class Phase3StrongIdentityAndMFATests(TestCase):
     def setUp(self):
         self.client = Client()
         self.user = User.objects.create_user(
-            username='soc.analyst',
-            email='soc.analyst@empresa.com.br',
-            password='ComplexPassword123!'
+            username="soc.analyst", email="soc.analyst@empresa.com.br", password="ComplexPassword123!"
         )
 
     def test_30_admin_login_protegido_secure_admin_login(self):
         """3.1: /admin/login/ redireciona usuários não autenticados para a tela segura com MFA e rate limiting."""
-        resp = self.client.get('/admin/login/')
+        resp = self.client.get("/admin/login/")
         self.assertEqual(resp.status_code, 302)
-        self.assertIn('/login/', resp.get('Location'))
-        self.assertIn('next=%2Fadmin%2Flogin%2F', resp.get('Location'))
+        self.assertIn("/login/", resp.get("Location"))
+        self.assertIn("next=%2Fadmin%2Flogin%2F", resp.get("Location"))
 
     def test_31_mfa_endpoints_acessiveis_e_protegidos(self):
         """3.1: Painel MFA /accounts/2fa/ exige login prévio e responde 200 para usuário autenticado."""
         # Não autenticado -> Redirecionado para o login
-        resp_unauth = self.client.get(reverse('mfa_index'))
+        resp_unauth = self.client.get(reverse("mfa_index"))
         self.assertEqual(resp_unauth.status_code, 302)
-        self.assertIn('/login/', resp_unauth.get('Location'))
+        self.assertIn("/login/", resp_unauth.get("Location"))
 
         # Autenticado -> Acessa painel MFA com layout SOC
         self.client.force_login(self.user)
-        resp_auth = self.client.get(reverse('mfa_index'))
+        resp_auth = self.client.get(reverse("mfa_index"))
         self.assertEqual(resp_auth.status_code, 200)
-        self.assertContains(resp_auth, 'Autenticação de dois fatores')
-        self.assertContains(resp_auth, '/accounts/2fa/totp/activate/')
-        self.assertContains(resp_auth, 'Códigos de recuperação')
+        self.assertContains(resp_auth, "Autenticação de dois fatores")
+        self.assertContains(resp_auth, "/accounts/2fa/totp/activate/")
+        self.assertContains(resp_auth, "Códigos de recuperação")
 
-    @override_settings(PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'])
+    @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
     def test_32_rate_limit_tentativas_excessivas_de_login(self):
         """3.1: Tentativas consecutivas de login incorreto disparam rate limiting (MITRE ATT&CK T1110)."""
-        login_url = reverse('account_login')
+        login_url = reverse("account_login")
 
         # 5 tentativas incorretas consecutivas
         for _ in range(5):
-            resp = self.client.post(login_url, {'login': 'soc.analyst', 'password': 'WrongPassword!'})
+            resp = self.client.post(login_url, {"login": "soc.analyst", "password": "WrongPassword!"})
             self.assertEqual(resp.status_code, 200)
 
         # 6ª tentativa deve ser barrada pelo allauth rate limiter
-        resp_blocked = self.client.post(login_url, {'login': 'soc.analyst', 'password': 'WrongPassword!'})
+        resp_blocked = self.client.post(login_url, {"login": "soc.analyst", "password": "WrongPassword!"})
         self.assertEqual(resp_blocked.status_code, 200)
-        self.assertContains(resp_blocked, 'Muitas tentativas de login falharam')
+        self.assertContains(resp_blocked, "Muitas tentativas de login falharam")
 
     def test_33_mfa_models_migrados_e_disponiveis(self):
         """3.1: Modelos de EmailAddress e Authenticator (TOTP/Recovery) operacionais no banco."""
@@ -633,12 +585,7 @@ class Phase3StrongIdentityAndMFATests(TestCase):
         from allauth.mfa.models import Authenticator
 
         # Criação de email associado
-        email_record = EmailAddress.objects.create(
-            user=self.user,
-            email=self.user.email,
-            verified=True,
-            primary=True
-        )
+        email_record = EmailAddress.objects.create(user=self.user, email=self.user.email, verified=True, primary=True)
         self.assertEqual(EmailAddress.objects.filter(user=self.user).count(), 1)
         self.assertTrue(email_record.verified)
 
@@ -646,4 +593,170 @@ class Phase3StrongIdentityAndMFATests(TestCase):
         self.assertEqual(Authenticator.objects.filter(user=self.user).count(), 0)
 
 
+@override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
+class Phase4QualityDevSecOpsAndPerformanceTests(TestCase):
+    """
+    Testes Unitários e de Performance para Fase 4: Qualidade & DevSecOps.
 
+    Cobre:
+    - 4.1: Validação de Regra de Negócio: Bloqueio estrito de concessão de acessos a desligados ou em offboarding.
+    - 4.3: Desempenho & Anti-N+1: Propriedades anotadas em lote nas listagens (Colaboradores, Offboarding, Sistemas).
+    """
+
+    def setUp(self):
+        self.client = Client()
+        self.grupo_analista = Group.objects.get(name="Analista TI")
+        self.user = User.objects.create_user(
+            username="devsecops.analyst", email="devsecops@empresa.com.br", password="ComplexPassword123!"
+        )
+        self.user.groups.add(self.grupo_analista)
+
+        self.depto = Departamento.objects.create(nome="Engenharia de Software", sigla="ENG")
+        self.cargo = Cargo.objects.create(nome="Engenheiro DevSecOps", departamento=self.depto)
+        self.localidade = Localidade.objects.create(nome="Salvador HQ", codigo="SSA-01", cidade="Salvador", estado="BA")
+        self.sistema = Sistema.objects.create(
+            nome="GitLab Enterprise",
+            tipo=Sistema.TipoSistema.ONPREM,
+            criticidade=Sistema.Criticidade.ALTA,
+            tipo_autenticacao=Sistema.TipoAutenticacao.INDIVIDUAL,
+        )
+
+    def test_40_bloqueio_concessao_acesso_a_colaborador_desligado(self):
+        """4.1: Impede concessão de novos acessos ATIVOS a colaborador com status DESLIGADO."""
+        colaborador_desligado = Colaborador.objects.create(
+            nome_completo="Lucas Ex-Funcionario",
+            matricula="MAT-DESLIGADO-01",
+            email_corporativo="lucas.ex@empresa.com.br",
+            departamento=self.depto,
+            cargo=self.cargo,
+            localidade=self.localidade,
+            data_admissao=timezone.localdate(),
+            status=Colaborador.StatusColaborador.DESLIGADO,
+            data_desligamento=timezone.localdate(),
+        )
+
+        vinculo = VinculoAcesso(
+            colaborador=colaborador_desligado,
+            sistema=self.sistema,
+            identificador_conta="lucas.gitlab",
+            status=VinculoAcesso.StatusAcesso.ATIVO,
+            concedido_por=self.user,
+        )
+
+        with self.assertRaises(ValidationError) as ctx:
+            vinculo.save()
+
+        self.assertIn("Não é permitido conceder novos acessos a um colaborador já desligado", str(ctx.exception))
+
+    def test_41_bloqueio_concessao_acesso_a_colaborador_em_offboarding(self):
+        """4.1: Impede concessão de novos acessos a colaborador com offboarding em andamento."""
+        colaborador_offboarding = Colaborador.objects.create(
+            nome_completo="Patricia Em Offboarding",
+            matricula="MAT-OFFB-01",
+            email_corporativo="patricia.offb@empresa.com.br",
+            departamento=self.depto,
+            cargo=self.cargo,
+            localidade=self.localidade,
+            data_admissao=timezone.localdate(),
+            status=Colaborador.StatusColaborador.ATIVO,
+        )
+
+        # Inicia processo de offboarding
+        ProcessoOffboarding.objects.create(
+            colaborador=colaborador_offboarding,
+            responsavel_ti=self.user,
+            status=ProcessoOffboarding.StatusOffboarding.INICIADO,
+            observacoes="Offboarding em andamento",
+        )
+
+        vinculo = VinculoAcesso(
+            colaborador=colaborador_offboarding,
+            sistema=self.sistema,
+            identificador_conta="patricia.gitlab",
+            status=VinculoAcesso.StatusAcesso.ATIVO,
+            concedido_por=self.user,
+        )
+
+        with self.assertRaises(ValidationError) as ctx:
+            vinculo.save()
+
+        self.assertIn(
+            "Não é permitido conceder novos acessos a um colaborador em processo de offboarding", str(ctx.exception)
+        )
+
+    def test_42_otimizacao_queries_anti_n_plus_one_listagem_colaboradores(self):
+        """4.3: Listagem de colaboradores utiliza anotação _total_acessos_ativos sem disparar N+1 queries."""
+        # Cria 5 colaboradores com múltiplos vínculos
+        for i in range(5):
+            c = Colaborador.objects.create(
+                nome_completo=f"Colaborador Teste {i}",
+                matricula=f"MAT-TEST-{i}",
+                email_corporativo=f"teste{i}@empresa.com.br",
+                departamento=self.depto,
+                cargo=self.cargo,
+                localidade=self.localidade,
+                data_admissao=timezone.localdate(),
+                status=Colaborador.StatusColaborador.ATIVO,
+            )
+            VinculoAcesso.objects.create(
+                colaborador=c,
+                sistema=self.sistema,
+                identificador_conta=f"conta.teste.{i}",
+                status=VinculoAcesso.StatusAcesso.ATIVO,
+                concedido_por=self.user,
+            )
+
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse("colaborador_list"))
+        self.assertEqual(resp.status_code, 200)
+
+        # Verifica se os colaboradores na lista têm o atributo anotado
+        colaboradores_na_view = resp.context["colaboradores"]
+        for colab in colaboradores_na_view:
+            self.assertTrue(hasattr(colab, "_total_acessos_ativos"))
+            self.assertEqual(colab.total_acessos_ativos, colab._total_acessos_ativos)
+
+    def test_43_otimizacao_queries_anti_n_plus_one_listagem_offboarding(self):
+        """4.3: Listagem de offboarding utiliza anotações _total_itens e _total_revogados sem N+1 queries."""
+        c = Colaborador.objects.create(
+            nome_completo="Offboarded Colab Test",
+            matricula="MAT-OFF-TEST",
+            email_corporativo="offb@empresa.com.br",
+            departamento=self.depto,
+            cargo=self.cargo,
+            localidade=self.localidade,
+            data_admissao=timezone.localdate(),
+            status=Colaborador.StatusColaborador.ATIVO,
+        )
+        v = VinculoAcesso.objects.create(
+            colaborador=c,
+            sistema=self.sistema,
+            identificador_conta="offb.gitlab",
+            status=VinculoAcesso.StatusAcesso.ATIVO,
+            concedido_por=self.user,
+        )
+        proc = ProcessoOffboarding.objects.create(
+            colaborador=c,
+            responsavel_ti=self.user,
+            status=ProcessoOffboarding.StatusOffboarding.INICIADO,
+            observacoes="Teste N+1",
+        )
+        ItemChecklistOffboarding.objects.create(
+            processo=proc,
+            vinculo_acesso=v,
+            status=ItemChecklistOffboarding.StatusItem.REVOGADO,
+            evidencia_revogacao="Audit Ticket #999",
+            responsavel_revogacao=self.user,
+        )
+
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse("offboarding_list"))
+        self.assertEqual(resp.status_code, 200)
+
+        processos_na_view = resp.context["processos"]
+        for p in processos_na_view:
+            self.assertTrue(hasattr(p, "_total_itens"))
+            self.assertTrue(hasattr(p, "_total_revogados"))
+            self.assertTrue(hasattr(p, "_total_resolvidos"))
+            self.assertEqual(p.total_itens, p._total_itens)
+            self.assertEqual(p.total_revogados, p._total_revogados)

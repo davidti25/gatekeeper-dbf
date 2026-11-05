@@ -1,0 +1,11 @@
+[run]
+source = apps/governance
+omit =
+    */migrations/*
+    */tests.py
+    */management/commands/*
+
+[report]
+show_missing = True
+skip_covered = True
+fail_under = 85
