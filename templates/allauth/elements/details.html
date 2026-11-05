@@ -1,0 +1,11 @@
+{% load allauth %}
+<details class="gk-section" {% if attrs.open %}open{% endif %}>
+    <summary class="cursor-pointer text-sm font-medium text-slate-300 hover:text-white">
+        {% slot summary %}
+        {% endslot %}
+    </summary>
+    <div class="pt-3 space-y-3">
+        {% slot body %}
+        {% endslot %}
+    </div>
+</details>

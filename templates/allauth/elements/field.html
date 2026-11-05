@@ -1,0 +1,56 @@
+{% load allauth %}
+{% comment %}
+    Campo do allauth com o visual do GateKeeper.
+    Campo desabilitado e SEM `name` (ex.: segredo do TOTP, que não é enviado no POST)
+    vira `readonly`: assim o usuário consegue selecionar e copiar o valor.
+    Campos desabilitados com `name` continuam `disabled` (não são enviados).
+{% endcomment %}
+<div class="gk-field-control">
+    {% if attrs.type == "checkbox" or attrs.type == "radio" %}
+        <label for="{{ attrs.id }}" class="flex items-center gap-2 text-sm text-slate-300">
+            <input {% if attrs.required %}required{% endif %}
+                   {% if attrs.disabled %}disabled{% endif %}
+                   {% if attrs.checked %}checked{% endif %}
+                   {% if attrs.name %}name="{{ attrs.name }}"{% endif %}
+                   {% if attrs.id %}id="{{ attrs.id }}"{% endif %}
+                   {% if attrs.value is not None %}value="{{ attrs.value }}"{% endif %}
+                   type="{{ attrs.type }}">
+            <span>{% slot label %}{% endslot %}</span>
+        </label>
+    {% else %}
+        <label for="{{ attrs.id }}" class="gk-label-caps">
+            {% slot label %}
+            {% endslot %}
+        </label>
+        {% if attrs.type == "textarea" %}
+            <textarea class="gk-input-lg"
+                      {% if attrs.required %}required{% endif %}
+                      {% if attrs.rows %}rows="{{ attrs.rows }}"{% endif %}
+                      {% if attrs.disabled %}{% if attrs.name %}disabled{% else %}readonly{% endif %}{% endif %}
+                      {% if attrs.readonly %}readonly{% endif %}
+                      {% if attrs.name %}name="{{ attrs.name }}"{% endif %}
+                      {% if attrs.id %}id="{{ attrs.id }}"{% endif %}
+                      {% if attrs.placeholder %}placeholder="{{ attrs.placeholder }}"{% endif %}>{% slot value %}{% endslot %}</textarea>
+        {% else %}
+            <input class="gk-input-lg{% if attrs.disabled and not attrs.name %} font-mono tracking-wider{% endif %}"
+                   {% if attrs.required %}required{% endif %}
+                   {% if attrs.disabled %}{% if attrs.name %}disabled{% else %}readonly{% endif %}{% endif %}
+                   {% if attrs.readonly %}readonly{% endif %}
+                   {% if attrs.name %}name="{{ attrs.name }}"{% endif %}
+                   {% if attrs.id %}id="{{ attrs.id }}"{% endif %}
+                   {% if attrs.placeholder %}placeholder="{{ attrs.placeholder }}"{% endif %}
+                   {% if attrs.autocomplete %}autocomplete="{{ attrs.autocomplete }}"{% endif %}
+                   {% if attrs.value is not None %}value="{{ attrs.value }}"{% endif %}
+                   type="{{ attrs.type }}">
+        {% endif %}
+    {% endif %}
+    {% for error in attrs.errors %}
+        <p class="gk-error">{{ error }}</p>
+    {% endfor %}
+    {% if slots.help_text %}
+        <span class="gk-help">
+            {% slot help_text %}
+            {% endslot %}
+        </span>
+    {% endif %}
+</div>

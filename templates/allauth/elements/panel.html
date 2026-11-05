@@ -1,0 +1,16 @@
+{% load allauth %}
+<section class="gk-section">
+    <h2 class="gk-h2">
+        {% slot title %}
+        {% endslot %}
+    </h2>
+    <div class="gk-text space-y-2">
+        {% slot body %}
+        {% endslot %}
+    </div>
+    {% if slots.actions %}
+        <div class="flex flex-wrap items-center gap-2 pt-1">
+            {% for action in slots.actions %}{{ action }}{% endfor %}
+        </div>
+    {% endif %}
+</section>

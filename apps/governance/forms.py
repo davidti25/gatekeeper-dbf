@@ -7,28 +7,45 @@ Contempla:
 - Fase 6.2: Permissão exclusiva para 'Não Aplicável' (Gestor SecOps) e justificativa obrigatória.
 """
 
+from allauth.mfa.totp.forms import ActivateTOTPForm as AllauthActivateTOTPForm
+from allauth.mfa.totp.internal import auth as totp_auth
 from django import forms
 from django.core.exceptions import ValidationError
 
 from .models import ItemChecklistOffboarding, Sistema
 
 
+class GateKeeperActivateTOTPForm(AllauthActivateTOTPForm):
+    """
+    Formulário de ativação TOTP com preservação de segredo na sessão.
+
+    Problema Resolvido:
+    No allauth padrão, ActivateTOTPForm usa `regenerate=not self.is_bound`. Em cada GET
+    ou recarregamento (F5), um novo segredo e um novo QR Code eram gerados, invalidando
+    imediatamente o segredo que o usuário havia acabado de escanear no smartphone.
+
+    Com `regenerate=False`, o segredo permanece estável durante toda a sessão de ativação.
+    Após a ativação com sucesso, o allauth purga o segredo da sessão via `clear_totp_secret()`.
+    """
+
+    def __init__(self, *args, **kwargs) -> None:
+        self.user = kwargs.pop("user")
+        super(forms.Form, self).__init__(*args, **kwargs)
+        self.secret = totp_auth.get_totp_secret(regenerate=False)
+
+
 class RevogacaoItemForm(forms.Form):
     status = forms.ChoiceField(
         choices=[],
         required=False,
-        widget=forms.Select(
-            attrs={
-                "class": "w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white focus:outline-none focus:ring-1 focus:ring-sky-500"
-            }
-        ),
+        widget=forms.Select(attrs={"class": "gk-input-sm"}),
     )
     evidencia_revogacao = forms.CharField(
         required=False,
         widget=forms.TextInput(
             attrs={
                 "placeholder": "Ex: Ticket GLPI #4582 / Conta desativada no AD",
-                "class": "w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500",
+                "class": "gk-input-sm",
             }
         ),
     )
@@ -37,7 +54,7 @@ class RevogacaoItemForm(forms.Form):
         widget=forms.TextInput(
             attrs={
                 "placeholder": "Observações técnicas complementares (ou justificativa para Não Aplicável)",
-                "class": "w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500",
+                "class": "gk-input-sm",
             }
         ),
     )

@@ -8,7 +8,7 @@
     <!-- Top Greeting & SOC Status -->
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-2 border-b border-slate-800">
         <div>
-            <h1 class="text-2xl font-bold text-white tracking-tight flex items-center space-x-2">
+            <h1 class="gk-page-title">
                 <span>Painel de Governança & Gestão de Identidades</span>
             </h1>
             <p class="text-sm text-slate-400 mt-1">
@@ -67,7 +67,7 @@
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
 
         <!-- Card 1: Colaboradores Ativos -->
-        <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 hover:border-slate-700 transition">
+        <div class="gk-card-hover">
             <div class="flex items-center justify-between">
                 <span class="text-xs font-medium text-slate-400">Colaboradores Ativos</span>
                 <div class="p-1.5 rounded-lg bg-sky-500/10 text-sky-400">
@@ -82,7 +82,7 @@
         </div>
 
         <!-- Card 2: Sistemas Corporativos -->
-        <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 hover:border-slate-700 transition">
+        <div class="gk-card-hover">
             <div class="flex items-center justify-between">
                 <span class="text-xs font-medium text-slate-400">Ativos & Sistemas</span>
                 <div class="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-400">
@@ -97,7 +97,7 @@
         </div>
 
         <!-- Card 3: Acessos Ativos Concedidos -->
-        <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 hover:border-slate-700 transition">
+        <div class="gk-card-hover">
             <div class="flex items-center justify-between">
                 <span class="text-xs font-medium text-slate-400">Acessos Ativos</span>
                 <div class="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400">
@@ -111,7 +111,7 @@
         </div>
 
         <!-- Card 4: Offboardings em Aberto -->
-        <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 hover:border-slate-700 transition">
+        <div class="gk-card-hover">
             <div class="flex items-center justify-between">
                 <span class="text-xs font-medium text-slate-400">Offboardings Pendentes</span>
                 <div class="p-1.5 rounded-lg bg-amber-500/10 text-amber-400">
@@ -126,7 +126,7 @@
         </div>
 
         <!-- Card 5: Sistemas com Dados LGPD -->
-        <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 hover:border-slate-700 transition">
+        <div class="gk-card-hover">
             <div class="flex items-center justify-between">
                 <span class="text-xs font-medium text-slate-400">Escopo LGPD</span>
                 <div class="p-1.5 rounded-lg bg-purple-500/10 text-purple-400">
@@ -146,8 +146,8 @@
 
         <!-- Left 2 Cols: Últimos Processos de Offboarding -->
         <div class="lg:col-span-2 space-y-4">
-            <div class="p-5 rounded-xl bg-slate-900/80 border border-slate-800">
-                <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div class="gk-card-lg">
+                <div class="gk-section-header">
                     <div class="flex items-center space-x-2">
                         <i data-lucide="list-checks" class="w-5 h-5 text-sky-400"></i>
                         <h2 class="text-base font-semibold text-white">Processos Recentes de Offboarding</h2>
@@ -206,8 +206,8 @@
             </div>
 
             <!-- Matriz RBAC Rápida -->
-            <div class="p-5 rounded-xl bg-slate-900/80 border border-slate-800">
-                <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div class="gk-card-lg">
+                <div class="gk-section-header">
                     <div class="flex items-center space-x-2">
                         <i data-lucide="shield" class="w-5 h-5 text-indigo-400"></i>
                         <h2 class="text-base font-semibold text-white">Governança por Setor Corporativo</h2>
@@ -242,34 +242,34 @@
                     <span>Ações Rápidas de SecOps</span>
                 </h3>
                 <div class="space-y-2">
-                    <a href="{% url 'colaborador_list' %}" class="w-full flex items-center justify-between p-3 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/60 text-slate-200 hover:text-white transition group">
+                    <a href="{% url 'colaborador_list' %}" class="gk-quick-action group">
                         <div class="flex items-center space-x-2.5">
                             <i data-lucide="user-minus" class="w-4 h-4 text-rose-400"></i>
                             <span class="text-xs font-semibold">Iniciar Offboarding</span>
                         </div>
-                        <i data-lucide="arrow-right" class="w-4 h-4 text-slate-500 group-hover:text-slate-300 group-hover:translate-x-0.5 transition"></i>
+                        <i data-lucide="arrow-right" class="gk-quick-action-icon"></i>
                     </a>
 
-                    <a href="{% url 'matriz_acesso' %}" class="w-full flex items-center justify-between p-3 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/60 text-slate-200 hover:text-white transition group">
+                    <a href="{% url 'matriz_acesso' %}" class="gk-quick-action group">
                         <div class="flex items-center space-x-2.5">
                             <i data-lucide="file-search" class="w-4 h-4 text-sky-400"></i>
                             <span class="text-xs font-semibold">Consultar Matriz RBAC</span>
                         </div>
-                        <i data-lucide="arrow-right" class="w-4 h-4 text-slate-500 group-hover:text-slate-300 group-hover:translate-x-0.5 transition"></i>
+                        <i data-lucide="arrow-right" class="gk-quick-action-icon"></i>
                     </a>
 
-                    <a href="{% url 'sistema_list' %}" class="w-full flex items-center justify-between p-3 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/60 text-slate-200 hover:text-white transition group">
+                    <a href="{% url 'sistema_list' %}" class="gk-quick-action group">
                         <div class="flex items-center space-x-2.5">
                             <i data-lucide="server" class="w-4 h-4 text-indigo-400"></i>
                             <span class="text-xs font-semibold">Inventário de Sistemas</span>
                         </div>
-                        <i data-lucide="arrow-right" class="w-4 h-4 text-slate-500 group-hover:text-slate-300 group-hover:translate-x-0.5 transition"></i>
+                        <i data-lucide="arrow-right" class="gk-quick-action-icon"></i>
                     </a>
                 </div>
             </div>
 
             <!-- Vulnerabilidade: Contas Compartilhadas -->
-            <div class="p-5 rounded-xl bg-slate-900/80 border border-slate-800">
+            <div class="gk-card-lg">
                 <div class="flex items-center space-x-2 pb-3 border-b border-slate-800">
                     <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-400"></i>
                     <h3 class="text-sm font-semibold text-white">Pontos de Atenção (Hardening)</h3>

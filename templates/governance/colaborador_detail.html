@@ -6,7 +6,7 @@
 <div class="space-y-6">
 
     <!-- Breadcrumb & Top Bar -->
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-800">
+    <div class="gk-page-header">
         <div class="flex items-center space-x-2 text-sm text-slate-400">
             <a href="{% url 'colaborador_list' %}" class="hover:text-white transition">Colaboradores</a>
             <span>/</span>
@@ -110,7 +110,7 @@
 
     <!-- Active Accesses Section -->
     <div class="p-6 rounded-xl bg-slate-900/80 border border-slate-800 space-y-4">
-        <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div class="gk-section-header">
             <div class="flex items-center space-x-2">
                 <i data-lucide="key" class="w-5 h-5 text-emerald-400"></i>
                 <h2 class="text-base font-semibold text-white">Acessos Atualmente Ativos ({{ acessos_ativos.count }})</h2>
@@ -119,8 +119,8 @@
         </div>
 
         <div class="overflow-x-auto">
-            <table class="w-full text-left text-sm text-slate-300">
-                <thead class="bg-slate-950/60 text-xs uppercase font-semibold text-slate-400 tracking-wider border-b border-slate-800">
+            <table class="gk-table">
+                <thead class="gk-table-head">
                     <tr>
                         <th class="px-4 py-3">Sistema / Ativo</th>
                         <th class="px-4 py-3">Tipo</th>
@@ -132,7 +132,7 @@
                 </thead>
                 <tbody class="divide-y divide-slate-800/80">
                     {% for vinculo in acessos_ativos %}
-                    <tr class="hover:bg-slate-800/40 transition">
+                    <tr class="gk-table-row">
                         <td class="px-4 py-3">
                             <span class="font-semibold text-white block">{{ vinculo.sistema.nome }}</span>
                             {% if vinculo.sistema.armazena_dados_lgpd %}
@@ -181,7 +181,7 @@
     <!-- Revoked / Historical Accesses -->
     {% if acessos_revogados %}
     <div class="p-6 rounded-xl bg-slate-900/60 border border-slate-800 space-y-4">
-        <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div class="gk-section-header">
             <div class="flex items-center space-x-2">
                 <i data-lucide="history" class="w-5 h-5 text-slate-400"></i>
                 <h2 class="text-base font-semibold text-slate-300">Histórico de Acessos Revogados ({{ acessos_revogados.count }})</h2>

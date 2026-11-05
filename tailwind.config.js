@@ -1,9 +1,11 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   darkMode: 'class',
+  // Só arquivos que realmente geram classes no HTML. Varrer todo apps/**/*.py fazia
+  // palavras de testes e docstrings (ex.: "container") virarem CSS em produção.
   content: [
     './templates/**/*.html',
-    './apps/**/*.py',
+    './apps/**/forms.py',
     './static/js/**/*.js',
   ],
   theme: {
@@ -27,4 +29,3 @@ module.exports = {
   },
   plugins: [],
 }
-

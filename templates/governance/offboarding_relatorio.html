@@ -5,13 +5,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Relatório de Offboarding - {{ processo.colaborador.nome_completo }} | GateKeeper-DBF</title>
-    
+
     <!-- Fontes Locais (Inter & JetBrains Mono) - Sem vazamento de IP / LGPD -->
     <link rel="stylesheet" href="{% static 'fonts/fonts.css' %}">
-    
+
     <!-- Tailwind CSS Compilado Localmente -->
     <link rel="stylesheet" href="{% static 'css/tailwind.min.css' %}">
-    <link rel="stylesheet" href="{% static 'css/print.css' %}">
 
     <!-- Lucide Icons & Scripts Utilitários Locais -->
     <script src="{% static 'vendor/lucide.min.js' %}" defer></script>
@@ -20,7 +19,7 @@
 <body class="bg-slate-100 text-slate-800 font-sans min-h-screen py-8">
 
     <div class="max-w-4xl mx-auto px-6">
-        
+
         <!-- Action Bar (Hidden on Print) -->
         <div class="no-print mb-6 flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-slate-200">
             <a href="{% url 'offboarding_detail' processo.pk %}" class="text-sm font-semibold text-sky-600 hover:text-sky-700 flex items-center space-x-1">
@@ -52,7 +51,7 @@
                 <div class="text-right text-xs text-slate-500 font-mono">
                     <p><strong>Protocolo:</strong> GK-OFF-{{ processo.pk|stringformat:"05d" }}</p>
                     <p><strong>Emissão:</strong> {{ gerado_em|date:"d/m/Y H:i:s" }}</p>
-                    <p><strong>Status:</strong> 
+                    <p><strong>Status:</strong>
                         {% if inconsistente %}
                             <span class="font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-300">INCONSISTENTE (ACESSO ATIVO)</span>
                         {% elif processo.status == 'CONCLUIDO' %}
@@ -81,8 +80,8 @@
             <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1">
                 <p class="font-bold text-slate-900">🛡️ Fundamentação Legal & Segurança da Informação:</p>
                 <p>
-                    Este relatório atesta perante a auditoria de TI e Segurança a completa revogação de acessos lógicos em conformidade com o 
-                    <strong>CIS Controls v8 (Requisito 5.5 - Processo de Revogação de Contas no Desligamento)</strong>, mitigação da técnica 
+                    Este relatório atesta perante a auditoria de TI e Segurança a completa revogação de acessos lógicos em conformidade com o
+                    <strong>CIS Controls v8 (Requisito 5.5 - Processo de Revogação de Contas no Desligamento)</strong>, mitigação da técnica
                     <strong>MITRE ATT&CK T1078 (Valid Accounts / Prevenção de Contas Órfãs)</strong> e atendimento ao <strong>Art. 46 da Lei Geral de Proteção de Dados (LGPD - Lei 13.709/2018)</strong>.
                 </p>
             </div>
@@ -195,8 +194,8 @@
             <!-- Formal Statement -->
             <div class="text-xs text-slate-600 space-y-2 pt-2">
                 <p>
-                    Declaramos para os devidos fins que, na data indicada, foram executados os procedimentos operacionais de segurança da informação 
-                    para bloqueio, exclusão ou revogação definitiva das credenciais lógicas listadas acima, garantindo a descontinuidade de acesso 
+                    Declaramos para os devidos fins que, na data indicada, foram executados os procedimentos operacionais de segurança da informação
+                    para bloqueio, exclusão ou revogação definitiva das credenciais lógicas listadas acima, garantindo a descontinuidade de acesso
                     às bases de dados e redes corporativas da organização.
                 </p>
             </div>
@@ -234,4 +233,3 @@
 
 </body>
 </html>
-

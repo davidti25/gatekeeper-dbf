@@ -6,7 +6,7 @@
 <div class="space-y-6">
 
     <!-- Top Navigation & Actions -->
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-800">
+    <div class="gk-page-header">
         <div class="flex items-center space-x-2 text-sm text-slate-400">
             <a href="{% url 'offboarding_list' %}" class="hover:text-white transition">Offboarding</a>
             <span>/</span>
@@ -228,8 +228,8 @@
                                         <span>{% if item.status == 'FALHA' %}Nova Tentativa de Revogação{% else %}Registrar Ação no Checklist{% endif %}</span>
                                     </div>
                                     <div>
-                                        <label class="block text-[11px] text-slate-400 mb-1">Ação / Status de Destino</label>
-                                        <select name="status" class="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white focus:outline-none focus:ring-1 focus:ring-sky-500">
+                                        <label class="gk-label-sm">Ação / Status de Destino</label>
+                                        <select name="status" class="gk-input-sm">
                                             <option value="REVOGADO" selected>Revogado com Sucesso</option>
                                             {% if item.status == 'PENDENTE' %}
                                             <option value="FALHA">Falha / Bloqueado com Erro</option>
@@ -240,12 +240,12 @@
                                         </select>
                                     </div>
                                     <div>
-                                        <label class="block text-[11px] text-slate-400 mb-1">Evidência / ID de Chamado (Obrigatório em Críticos/LGPD)</label>
-                                        <input type="text" name="evidencia_revogacao" placeholder="Ex: Ticket GLPI #4582 / Conta desativada no AD" class="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500">
+                                        <label class="gk-label-sm">Evidência / ID de Chamado (Obrigatório em Críticos/LGPD)</label>
+                                        <input type="text" name="evidencia_revogacao" placeholder="Ex: Ticket GLPI #4582 / Conta desativada no AD" class="gk-input-sm">
                                     </div>
                                     <div>
-                                        <label class="block text-[11px] text-slate-400 mb-1">Observações Técnicas / Justificativa</label>
-                                        <input type="text" name="observacao" placeholder="Ex: Backup de arquivos executado (ou justificativa para Não Aplicável)" class="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500">
+                                        <label class="gk-label-sm">Observações Técnicas / Justificativa</label>
+                                        <input type="text" name="observacao" placeholder="Ex: Backup de arquivos executado (ou justificativa para Não Aplicável)" class="gk-input-sm">
                                     </div>
                                     <button type="submit" class="w-full py-2 px-3 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white transition flex items-center justify-center space-x-1.5 shadow-md shadow-rose-600/20">
                                         <i data-lucide="check" class="w-3.5 h-3.5"></i>

@@ -1,16 +1,16 @@
 {% extends 'base.html' %}
 
-{% block title %}
-    {% block head_title %}{% endblock %} | GateKeeper-DBF
-{% endblock %}
+{% comment %}
+    Layout das telas de gestão de conta do allauth (MFA, códigos de recuperação, senha).
+    O cartão fica em `main`; a página do allauth preenche `content` dentro dele.
+{% endcomment %}
 
-{% block content %}
-<div class="max-w-4xl mx-auto space-y-6 py-8 px-4 sm:px-6 lg:px-8">
-    <div class="p-8 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-2xl shadow-black/40 space-y-6">
-        {% block body %}
-        {% block content_area %}{% endblock %}
-        {% endblock %}
+{% block title %}{% block head_title %}{% endblock %} | GateKeeper-DBF{% endblock %}
+
+{% block main %}
+<div class="max-w-3xl mx-auto py-8">
+    <div class="gk-auth-card gk-allauth">
+        {% block content %}{% endblock %}
     </div>
 </div>
 {% endblock %}
-

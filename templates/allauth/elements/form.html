@@ -1,0 +1,14 @@
+{% load allauth %}
+<form method="{{ attrs.method }}" class="space-y-5"
+      {% if attrs.action %}action="{{ attrs.action }}"{% endif %}>
+    <div class="space-y-4">
+        {% slot body %}
+        {% endslot %}
+    </div>
+    {% if slots.actions %}
+        <div class="flex flex-wrap items-center gap-2 pt-2">
+            {% slot actions %}
+            {% endslot %}
+        </div>
+    {% endif %}
+</form>

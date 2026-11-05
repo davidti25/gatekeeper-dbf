@@ -18,6 +18,19 @@ repos:
     rev: v5.0.0
     hooks:
       - id: check-yaml
+      # CSS gerado pelo Tailwind (minificado, sem quebra de linha final) não é editado à mão:
+      # alterá-lo aqui faria o hook tailwind-css-atualizado acusar arquivo desatualizado.
       - id: end-of-file-fixer
+        exclude: ^static/css/tailwind\.min\.css$
       - id: trailing-whitespace
+        exclude: ^static/css/tailwind\.min\.css$
       - id: check-added-large-files
+
+  - repo: local
+    hooks:
+      - id: tailwind-css-atualizado
+        name: tailwind.min.css atualizado
+        entry: scripts/build_css.sh --check
+        language: system
+        pass_filenames: false
+        files: ^(templates/.*\.html|static/css/input\.css|static/js/.*\.js|apps/.*/forms\.py|tailwind\.config\.js)$

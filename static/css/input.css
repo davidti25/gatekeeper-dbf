@@ -1,20 +1,296 @@
+/* ==============================================================================
+ * GateKeeper-DBF - Fonte única do CSS (Tailwind v3.4.17)
+ *
+ * Compilar:   scripts/build_css.sh           -> static/css/tailwind.min.css
+ * Verificar:  scripts/build_css.sh --check   (CI e pre-commit falham se desatualizado)
+ *
+ * Regras:
+ * - Sem style="" nem estilos inline: a CSP é `style-src 'self'`.
+ * - Cores sempre do tema (theme(...)), nunca hex solto.
+ * - Combinações repetidas viram componente `gk-*` em @layer components.
+ * ============================================================================== */
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: #0f172a;
-}
-::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+/* ------------------------------------------------------------------------------
+ * Base: tema escuro, barra de rolagem e acessibilidade
+ * ------------------------------------------------------------------------------ */
+@layer base {
+  /* Tema escuro da aplicação (o relatório de auditoria é claro e não usa esta classe).
+     color-scheme faz controles nativos (select, date, scrollbar) seguirem o tema. */
+  html.gk-dark {
+    color-scheme: dark;
+    /* Firefox */
+    scrollbar-color: theme("colors.slate.700") theme("colors.slate.900");
+    scrollbar-width: thin;
+  }
+
+  /* Chromium / WebKit */
+  html.gk-dark ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  html.gk-dark ::-webkit-scrollbar-track {
+    background: theme("colors.slate.900");
+  }
+  html.gk-dark ::-webkit-scrollbar-thumb {
+    background: theme("colors.slate.700");
+    border-radius: theme("borderRadius.DEFAULT");
+  }
+  html.gk-dark ::-webkit-scrollbar-thumb:hover {
+    background: theme("colors.slate.600");
+  }
+
+  /* Foco visível na navegação por teclado (WCAG 2.4.7).
+     :where() mantém especificidade zero: campos com focus:ring-* continuam usando o anel. */
+  :where(a, button, summary, [role="button"], [tabindex]):focus-visible {
+    outline: 2px solid theme("colors.sky.400");
+    outline-offset: 2px;
+  }
 }
 
+/* Respeita a preferência do sistema por menos movimento (WCAG 2.3.3). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ------------------------------------------------------------------------------
+ * Componentes reutilizáveis (cada um verificado: gera exatamente o mesmo CSS
+ * das classes utilitárias que substituiu)
+ * ------------------------------------------------------------------------------ */
+@layer components {
+  /* --- Tipografia de formulário --- */
+  .gk-label {
+    @apply block text-xs font-medium text-slate-400 mb-1;
+  }
+  .gk-label-caps {
+    @apply block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5;
+  }
+  .gk-label-sm {
+    @apply block text-[11px] text-slate-400 mb-1;
+  }
+
+  /* --- Cabeçalhos --- */
+  .gk-page-header {
+    @apply flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-800;
+  }
+  .gk-page-title {
+    @apply text-2xl font-bold text-white tracking-tight flex items-center space-x-2;
+  }
+  .gk-section-header {
+    @apply flex items-center justify-between pb-3 border-b border-slate-800;
+  }
+
+  /* --- Superfícies --- */
+  .gk-card {
+    @apply p-4 rounded-xl bg-slate-900/80 border border-slate-800;
+  }
+  .gk-card-hover {
+    @apply p-4 rounded-xl bg-slate-900/80 border border-slate-800 hover:border-slate-700 transition;
+  }
+  .gk-card-lg {
+    @apply p-5 rounded-xl bg-slate-900/80 border border-slate-800;
+  }
+  .gk-panel {
+    @apply rounded-xl bg-slate-900/80 border border-slate-800 overflow-hidden;
+  }
+  .gk-auth-wrapper {
+    @apply min-h-[75vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8;
+  }
+  .gk-auth-card {
+    @apply p-8 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-2xl shadow-black/40;
+  }
+
+  /* --- Campos --- */
+  .gk-input {
+    @apply w-full px-3 py-2 rounded-lg bg-slate-800/80 border border-slate-700 text-sm text-white focus:outline-none focus:ring-2 focus:ring-sky-500;
+  }
+  .gk-input-sm {
+    @apply w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500;
+  }
+  .gk-search-input {
+    @apply w-full pl-10 pr-3 py-2.5 rounded-xl bg-slate-950/80 border border-slate-700/80 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 transition;
+  }
+  .gk-search-icon {
+    @apply w-4 h-4 text-slate-500 absolute left-3.5 top-3.5;
+  }
+
+  /* --- Tabelas --- */
+  .gk-table {
+    @apply w-full text-left text-sm text-slate-300;
+  }
+  .gk-table-head {
+    @apply bg-slate-950/60 text-xs uppercase font-semibold text-slate-400 tracking-wider border-b border-slate-800;
+  }
+  .gk-table-row {
+    @apply hover:bg-slate-800/40 transition;
+  }
+  .gk-table-empty {
+    @apply px-5 py-12 text-center text-slate-500;
+  }
+
+  /* --- Navegação e ações --- */
+  .gk-page-btn {
+    @apply px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-white;
+  }
+  .gk-nav-link {
+    @apply px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition;
+  }
+  /* Usar junto com a classe `group` no HTML (o Tailwind não permite `group` no @apply). */
+  .gk-quick-action {
+    @apply w-full flex items-center justify-between p-3 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/60 text-slate-200 hover:text-white transition;
+  }
+  .gk-quick-action-icon {
+    @apply w-4 h-4 text-slate-500 group-hover:text-slate-300 group-hover:translate-x-0.5 transition;
+  }
+
+  /* --- Botões --- */
+  .gk-btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .gk-btn-primary {
+    @apply gk-btn bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white shadow-lg shadow-sky-600/20;
+  }
+  .gk-btn-secondary {
+    @apply gk-btn bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white;
+  }
+  .gk-btn-danger {
+    @apply gk-btn bg-rose-600/90 hover:bg-rose-500 text-white shadow-md shadow-rose-600/20;
+  }
+  .gk-btn-link {
+    @apply inline-flex items-center gap-1 text-sm font-medium text-sky-400 hover:text-sky-300 hover:underline underline-offset-4;
+  }
+  .gk-btn-sm {
+    @apply px-3 py-1.5 text-xs rounded-lg;
+  }
+
+  /* --- Telas do allauth (MFA, códigos de recuperação, reautenticação) --- */
+  .gk-allauth {
+    @apply space-y-5;
+  }
+  .gk-h1 {
+    @apply text-2xl font-bold text-white tracking-tight;
+  }
+  .gk-h2 {
+    @apply text-lg font-semibold text-white;
+  }
+  .gk-text {
+    @apply text-sm text-slate-400 leading-relaxed;
+  }
+  .gk-help {
+    @apply block text-[11px] text-slate-500 mt-1.5;
+  }
+  .gk-error {
+    @apply text-[11px] text-rose-400 mt-1;
+  }
+  .gk-alert {
+    @apply p-3.5 rounded-xl bg-sky-950/40 border border-sky-800/60 text-sm text-sky-100;
+  }
+  .gk-alert-error {
+    @apply p-3.5 rounded-xl bg-rose-950/50 border border-rose-800/80 text-xs text-rose-200;
+  }
+  .gk-input-lg {
+    @apply w-full px-3 py-2.5 rounded-xl bg-slate-950/80 border border-slate-700/80 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 transition read-only:text-slate-300 read-only:cursor-default disabled:opacity-60 disabled:cursor-not-allowed;
+  }
+  /* Widgets renderizados pelo próprio Django ({{ field }}) não recebem classe:
+     o contêiner estiliza os controles de dentro. */
+  .gk-field-control :where(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]), select, textarea) {
+    @apply gk-input-lg;
+  }
+  .gk-field-control :where(input[type="checkbox"], input[type="radio"]) {
+    @apply w-4 h-4 accent-sky-500;
+  }
+  .gk-qr {
+    /* Fundo branco: o QR é escuro e precisa de contraste para a câmera do celular ler. */
+    @apply block w-48 h-48 p-3 bg-white rounded-xl;
+  }
+  .gk-section {
+    @apply space-y-3 p-5 rounded-xl bg-slate-950/50 border border-slate-800;
+  }
+  .gk-tag {
+    @apply inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-800 text-slate-300 border border-slate-700;
+  }
+  .gk-cell {
+    @apply px-4 py-3;
+  }
+
+  /* --- Barra de progresso (Fase 9.1) ---
+     <progress value max> nativo: a largura vem do próprio elemento, sem style="". */
+  .gk-progress {
+    -webkit-appearance: none;
+    appearance: none;
+    display: block;
+    width: 100%;
+    height: theme("spacing[1.5]");
+    border: 0;
+    border-radius: theme("borderRadius.full");
+    overflow: hidden;
+    background-color: theme("colors.slate.800"); /* trilho (Firefox) */
+    color: theme("colors.sky.500");
+  }
+  .gk-progress::-webkit-progress-bar {
+    background-color: theme("colors.slate.800");
+    border-radius: theme("borderRadius.full");
+  }
+  .gk-progress::-webkit-progress-value {
+    background-color: theme("colors.sky.500");
+    border-radius: theme("borderRadius.full");
+    transition: width 0.5s ease;
+  }
+  .gk-progress::-moz-progress-bar {
+    background-color: theme("colors.sky.500");
+    border-radius: theme("borderRadius.full");
+  }
+  .gk-progress--md {
+    height: theme("spacing.2");
+  }
+  .gk-progress--lg {
+    height: theme("spacing.3");
+  }
+  /* Pseudo-elementos com prefixo de fabricante ficam em regras separadas: se um navegador
+     não reconhece um seletor da lista, descarta a regra inteira. */
+  .gk-progress--dark-track {
+    background-color: theme("colors.slate.900");
+  }
+  .gk-progress--dark-track::-webkit-progress-bar {
+    background-color: theme("colors.slate.900");
+  }
+  .gk-progress--done {
+    color: theme("colors.emerald.500");
+  }
+  .gk-progress--done::-webkit-progress-value {
+    background-color: theme("colors.emerald.500");
+  }
+  .gk-progress--done::-moz-progress-bar {
+    background-color: theme("colors.emerald.500");
+  }
+}
+
+/* ------------------------------------------------------------------------------
+ * Impressão (relatório de auditoria de offboarding)
+ * ------------------------------------------------------------------------------ */
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 11pt;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-border {
+    border-color: theme("colors.slate.300") !important;
+  }
+  .page-break {
+    break-before: page;
+  }
+}

@@ -103,6 +103,15 @@ ACCOUNT_RATE_LIMITS = {
 }
 MFA_SUPPORTED_TYPES = ["totp", "recovery_codes"]
 MFA_TOTP_ISSUER = "GateKeeper-DBF"
+# Tolerância de tempo para TOTP: 2 passos (±60s) mitiga pequenas diferenças de relógio entre cliente e servidor (RFC 6238)
+MFA_TOTP_TOLERANCE = env.int("MFA_TOTP_TOLERANCE", default=2)
+# Formulário customizado para manter o segredo e QR Code estáveis na sessão durante a ativação
+MFA_FORMS = {
+    "activate_totp": "apps.governance.forms.GateKeeperActivateTOTPForm",
+}
+# Bypass de TOTP exclusivo para ambiente de desenvolvimento / testes caso o relógio local esteja fora de sincronia
+if DEBUG:
+    MFA_TOTP_INSECURE_BYPASS_CODE = env("MFA_TOTP_INSECURE_BYPASS_CODE", default=None)
 
 ROOT_URLCONF = "core.urls"
 

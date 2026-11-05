@@ -61,6 +61,12 @@ jobs:
         run: |
           python manage.py makemigrations --check --dry-run
 
+      - name: 🎨 Verificação do CSS Compilado (Tailwind)
+        # Recompila com o binário fixado (v3.4.17 + SHA-256) e falha se o
+        # static/css/tailwind.min.css commitado não corresponder aos templates.
+        run: |
+          bash scripts/build_css.sh --check
+
       - name: 📦 Coleta de Estáticos com Manifesto (igual ao Dockerfile)
         # Com DEBUG=False (sempre nos testes), o {% static %} exige o manifesto do
         # CompressedManifestStaticFilesStorage. Sem este passo, toda página renderizada falha.

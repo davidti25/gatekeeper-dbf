@@ -1,6 +1,6 @@
 {% load static %}
 <!DOCTYPE html>
-<html lang="pt-BR" class="h-full bg-slate-950 text-slate-100">
+<html lang="pt-BR" class="gk-dark h-full bg-slate-950 text-slate-100">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,7 +11,6 @@
 
     <!-- Tailwind CSS Compilado Localmente -->
     <link rel="stylesheet" href="{% static 'css/tailwind.min.css' %}">
-    <link rel="stylesheet" href="{% static 'css/components.css' %}">
 
     <!-- Lucide Icons Local -->
     <script src="{% static 'vendor/lucide.min.js' %}" defer></script>
@@ -129,7 +128,12 @@
 
     <!-- Main Content Block -->
     <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {% block content %}{% endblock %}
+        {% comment %}
+            `main` envolve `content` para os layouts do allauth (allauth/layouts/*.html)
+            poderem adicionar o cartão em volta: as páginas do allauth sobrescrevem
+            `content`, e o cartão definido em `main` continua no lugar.
+        {% endcomment %}
+        {% block main %}{% block content %}{% endblock %}{% endblock %}
     </main>
 
     <!-- Footer -->
