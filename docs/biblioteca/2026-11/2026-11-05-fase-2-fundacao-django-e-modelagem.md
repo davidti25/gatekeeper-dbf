@@ -18,7 +18,7 @@
    * **Cookies & Sessões:** Ativação de `SESSION_COOKIE_HTTPONLY = True` e `CSRF_COOKIE_HTTPONLY = True` para mitigar ataques de **Cross-Site Scripting (XSS)** que buscam exfiltração de tokens de sessão.
    * **Proteção contra Clickjacking & MIME-Sniffing:** `X_FRAME_OPTIONS = 'DENY'` e `SECURE_CONTENT_TYPE_NOSNIFF = True`.
    * **Política de Senhas:** Aumento do requisito de comprimento mínimo de senha para 12 caracteres (`MinimumLengthValidator`), aderente ao **CIS Controls v8** e **NIST SP 800-63B**.
-   * **Localização e Fuso Horário:** Configurado para `pt-br` e timezone `America/Sao_Paulo`.
+   * **Localização e Fuso Horário:** Configurado para `pt-br` e timezone `America/Bahia`.
 
 3. **Arquitetura de Dados & Modelagem IAM:**
    * Desenvolvida a modelagem em [`apps/governance/models.py`](file:///home/davidbf/dev/GateKeeper-DBF/apps/governance/models.py), contemplando:
@@ -43,3 +43,4 @@
 1. Desenvolvimento das Views e Interface Web (Dashboard Executivo de Governança).
 2. Implementação do fluxo guiado de Offboarding com checklist interativo de revogação.
 3. Exportação de relatórios de auditoria para conformidade com CIS Controls 5.5 e LGPD.
+

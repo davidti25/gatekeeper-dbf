@@ -178,3 +178,4 @@ class Command(BaseCommand):
                 )
 
         self.stdout.write(self.style.SUCCESS("✅ Carga de dados base de Governança concluída com sucesso!"))
+
