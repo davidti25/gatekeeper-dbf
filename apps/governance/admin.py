@@ -3,11 +3,13 @@ Configuração do Django Admin para o Módulo de Governança & IAM (GateKeeper-D
 
 Painel voltado para analistas de SOC, SecOps e TI com filtros estratégicos
 de criticidade, LGPD, status de colaborador e processo de offboarding.
+Integrado ao simple_history para rastreamento de versões e imutabilidade de registros.
 """
 
 from django.contrib import admin
 from django.utils.html import format_html
 from django.utils import timezone
+from simple_history.admin import SimpleHistoryAdmin
 from .models import (
     Localidade,
     Departamento,
@@ -52,7 +54,7 @@ class PerfilAcessoInline(admin.TabularInline):
 
 
 @admin.register(Sistema)
-class SistemaAdmin(admin.ModelAdmin):
+class SistemaAdmin(SimpleHistoryAdmin):
     list_display = (
         'nome',
         'tipo',
@@ -77,10 +79,10 @@ class SistemaAdmin(admin.ModelAdmin):
     @admin.display(description="Criticidade")
     def exibir_criticidade(self, obj):
         cores = {
-            Sistema.Criticidade.CRITICA: '#b91c1c',  # Vermelho escuro
-            Sistema.Criticidade.ALTA: '#ea580c',     # Laranja
-            Sistema.Criticidade.MEDIA: '#ca8a04',    # Amarelo/Dourado
-            Sistema.Criticidade.BAIXA: '#15803d',    # Verde
+            Sistema.Criticidade.CRITICA: '#b91c1c',
+            Sistema.Criticidade.ALTA: '#ea580c',
+            Sistema.Criticidade.MEDIA: '#ca8a04',
+            Sistema.Criticidade.BAIXA: '#15803d',
         }
         cor = cores.get(obj.criticidade, '#4b5563')
         return format_html(
@@ -105,7 +107,7 @@ class VinculoAcessoInline(admin.TabularInline):
 
 
 @admin.register(Colaborador)
-class ColaboradorAdmin(admin.ModelAdmin):
+class ColaboradorAdmin(SimpleHistoryAdmin):
     list_display = (
         'nome_completo',
         'matricula',
@@ -121,13 +123,17 @@ class ColaboradorAdmin(admin.ModelAdmin):
     inlines = [VinculoAcessoInline]
     date_hierarchy = 'data_admissao'
 
+    # Fase 1.1: Imutabilidade - Registros de colaboradores nunca são excluídos do sistema
+    def has_delete_permission(self, request, obj=None):
+        return False
+
     @admin.display(description="Status")
     def exibir_status(self, obj):
         cores = {
-            Colaborador.StatusColaborador.ATIVO: '#15803d',     # Verde
-            Colaborador.StatusColaborador.FERIAS: '#0284c7',    # Azul
-            Colaborador.StatusColaborador.AFASTADO: '#d97706',  # Âmbar
-            Colaborador.StatusColaborador.DESLIGADO: '#dc2626',  # Vermelho
+            Colaborador.StatusColaborador.ATIVO: '#15803d',
+            Colaborador.StatusColaborador.FERIAS: '#0284c7',
+            Colaborador.StatusColaborador.AFASTADO: '#d97706',
+            Colaborador.StatusColaborador.DESLIGADO: '#dc2626',
         }
         cor = cores.get(obj.status, '#6b7280')
         return format_html(
@@ -138,7 +144,7 @@ class ColaboradorAdmin(admin.ModelAdmin):
 
 
 @admin.register(VinculoAcesso)
-class VinculoAcessoAdmin(admin.ModelAdmin):
+class VinculoAcessoAdmin(SimpleHistoryAdmin):
     list_display = (
         'colaborador',
         'sistema',
@@ -156,6 +162,10 @@ class VinculoAcessoAdmin(admin.ModelAdmin):
         'justificativa'
     )
     autocomplete_fields = ('colaborador',)
+
+    # Fase 1.1: Imutabilidade da trilha de auditoria
+    def has_delete_permission(self, request, obj=None):
+        return False
 
     @admin.display(description="Status")
     def exibir_status(self, obj):
@@ -175,11 +185,11 @@ class VinculoAcessoAdmin(admin.ModelAdmin):
 class ItemChecklistOffboardingInline(admin.TabularInline):
     model = ItemChecklistOffboarding
     extra = 0
-    fields = ('vinculo_acesso', 'revogado', 'data_revogacao', 'responsavel_revogacao', 'evidencia_revogacao')
+    fields = ('vinculo_acesso', 'status', 'revogado', 'data_revogacao', 'responsavel_revogacao', 'evidencia_revogacao')
 
 
 @admin.register(ProcessoOffboarding)
-class ProcessoOffboardingAdmin(admin.ModelAdmin):
+class ProcessoOffboardingAdmin(SimpleHistoryAdmin):
     list_display = (
         'colaborador',
         'exibir_progresso',
@@ -191,6 +201,10 @@ class ProcessoOffboardingAdmin(admin.ModelAdmin):
     list_filter = ('status', 'responsavel_ti')
     search_fields = ('colaborador__nome_completo', 'observacoes')
     inlines = [ItemChecklistOffboardingInline]
+
+    # Fase 1.1: Imutabilidade do processo de desligamento
+    def has_delete_permission(self, request, obj=None):
+        return False
 
     @admin.display(description="Progresso")
     def exibir_progresso(self, obj):
@@ -223,3 +237,13 @@ class ProcessoOffboardingAdmin(admin.ModelAdmin):
             cor,
             obj.get_status_display()
         )
+
+
+@admin.register(ItemChecklistOffboarding)
+class ItemChecklistOffboardingAdmin(SimpleHistoryAdmin):
+    list_display = ('processo', 'vinculo_acesso', 'status', 'revogado', 'data_revogacao', 'responsavel_revogacao')
+    list_filter = ('status', 'revogado')
+    search_fields = ('processo__colaborador__nome_completo', 'vinculo_acesso__sistema__nome', 'evidencia_revogacao')
+
+    def has_delete_permission(self, request, obj=None):
+        return False

@@ -36,6 +36,8 @@
                         <h1 class="text-xl font-bold text-white">{{ processo.colaborador.nome_completo }}</h1>
                         {% if processo.status == 'CONCLUIDO' %}
                             <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Processo 100% Concluído</span>
+                        {% elif processo.status == 'PENDENTE' %}
+                            <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">Pendente com Bloqueio</span>
                         {% else %}
                             <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20">Em Execução</span>
                         {% endif %}
@@ -85,16 +87,24 @@
 
         <div class="space-y-4">
             {% for item in itens %}
-            <div class="p-5 rounded-xl border transition-all {% if item.revogado %}bg-slate-900/40 border-emerald-900/50 text-slate-300{% else %}bg-slate-900/90 border-slate-700/80 shadow-md{% endif %}">
+            <div class="p-5 rounded-xl border transition-all {% if item.status == 'REVOGADO' %}bg-slate-900/40 border-emerald-900/50 text-slate-300{% elif item.status == 'FALHA' %}bg-rose-950/20 border-rose-900/50 text-slate-300{% elif item.status == 'NAO_APLICAVEL' %}bg-slate-900/30 border-slate-800 text-slate-400{% else %}bg-slate-900/90 border-slate-700/80 shadow-md{% endif %}">
                 
                 <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
                     
                     <!-- Left: System & Account Info -->
                     <div class="space-y-2 flex-1">
                         <div class="flex items-center space-x-3">
-                            {% if item.revogado %}
+                            {% if item.status == 'REVOGADO' %}
                                 <div class="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
                                     <i data-lucide="check" class="w-5 h-5"></i>
+                                </div>
+                            {% elif item.status == 'FALHA' %}
+                                <div class="w-8 h-8 rounded-lg bg-rose-500/10 text-rose-400 flex items-center justify-center">
+                                    <i data-lucide="alert-triangle" class="w-5 h-5"></i>
+                                </div>
+                            {% elif item.status == 'NAO_APLICAVEL' %}
+                                <div class="w-8 h-8 rounded-lg bg-slate-700/20 text-slate-400 flex items-center justify-center">
+                                    <i data-lucide="minus-circle" class="w-5 h-5"></i>
                                 </div>
                             {% else %}
                                 <div class="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center animate-pulse">
@@ -106,6 +116,17 @@
                                 <div class="flex items-center space-x-2">
                                     <span class="text-base font-bold text-white">{{ item.vinculo_acesso.sistema.nome }}</span>
                                     
+                                    <!-- Status Badge -->
+                                    {% if item.status == 'REVOGADO' %}
+                                        <span class="px-2 py-0.2 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Revogado</span>
+                                    {% elif item.status == 'FALHA' %}
+                                        <span class="px-2 py-0.2 rounded text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">Falha / Erro</span>
+                                    {% elif item.status == 'NAO_APLICAVEL' %}
+                                        <span class="px-2 py-0.2 rounded text-[10px] font-bold bg-slate-700/30 text-slate-400 border border-slate-700/50">Não Aplicável</span>
+                                    {% else %}
+                                        <span class="px-2 py-0.2 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">Pendente</span>
+                                    {% endif %}
+
                                     <!-- Criticidade Badge -->
                                     {% if item.vinculo_acesso.sistema.criticidade == 'CRITICA' %}
                                         <span class="px-2 py-0.2 rounded text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">Crítico</span>
@@ -154,20 +175,34 @@
 
                     <!-- Right: Action Form or Audit Confirmation -->
                     <div class="lg:w-80">
-                        {% if item.revogado %}
-                            <!-- Already Revoked Audit Record -->
-                            <div class="p-3.5 rounded-lg bg-emerald-950/30 border border-emerald-800/40 text-xs space-y-2">
-                                <div class="flex items-center space-x-1.5 text-emerald-400 font-semibold">
-                                    <i data-lucide="check-circle" class="w-4 h-4"></i>
-                                    <span>Revogação Auditada & Confirmada</span>
+                        {% if item.status != 'PENDENTE' %}
+                            <!-- Already Resolved Audit Record -->
+                            <div class="p-3.5 rounded-lg {% if item.status == 'REVOGADO' %}bg-emerald-950/30 border border-emerald-800/40{% elif item.status == 'FALHA' %}bg-rose-950/30 border border-rose-800/40{% else %}bg-slate-900/60 border border-slate-800{% endif %} text-xs space-y-2">
+                                <div class="flex items-center space-x-1.5 {% if item.status == 'REVOGADO' %}text-emerald-400{% elif item.status == 'FALHA' %}text-rose-400{% else %}text-slate-400{% endif %} font-semibold">
+                                    {% if item.status == 'REVOGADO' %}
+                                        <i data-lucide="check-circle" class="w-4 h-4"></i>
+                                        <span>Revogação Auditada & Confirmada</span>
+                                    {% elif item.status == 'FALHA' %}
+                                        <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+                                        <span>Falha Registrada no Encerramento</span>
+                                    {% else %}
+                                        <i data-lucide="minus-circle" class="w-4 h-4"></i>
+                                        <span>Item Não Aplicável</span>
+                                    {% endif %}
                                 </div>
                                 <div class="text-[11px] text-slate-300 space-y-1 font-mono">
                                     <div><span class="text-slate-500">Data/Hora:</span> {{ item.data_revogacao|date:"d/m/Y H:i:s" }}</div>
                                     <div><span class="text-slate-500">Responsável:</span> {{ item.responsavel_revogacao.username|default:"SecOps" }}</div>
                                     {% if item.evidencia_revogacao %}
-                                    <div class="mt-1 pt-1 border-t border-emerald-900/40">
+                                    <div class="mt-1 pt-1 border-t {% if item.status == 'REVOGADO' %}border-emerald-900/40{% elif item.status == 'FALHA' %}border-rose-900/40{% else %}border-slate-800{% endif %}">
                                         <span class="text-slate-500 block">Evidência:</span>
-                                        <span class="text-emerald-300 font-sans text-xs">{{ item.evidencia_revogacao }}</span>
+                                        <span class="{% if item.status == 'REVOGADO' %}text-emerald-300{% elif item.status == 'FALHA' %}text-rose-300{% else %}text-slate-300{% endif %} font-sans text-xs">{{ item.evidencia_revogacao }}</span>
+                                    </div>
+                                    {% endif %}
+                                    {% if item.observacao %}
+                                    <div class="mt-1 pt-1 border-t {% if item.status == 'REVOGADO' %}border-emerald-900/40{% elif item.status == 'FALHA' %}border-rose-900/40{% else %}border-slate-800{% endif %}">
+                                        <span class="text-slate-500 block">Observação:</span>
+                                        <span class="text-slate-300 font-sans text-xs">{{ item.observacao }}</span>
                                     </div>
                                     {% endif %}
                                 </div>
@@ -178,11 +213,19 @@
                                 {% csrf_token %}
                                 <div class="text-xs font-semibold text-white flex items-center space-x-1.5">
                                     <i data-lucide="shield" class="w-4 h-4 text-rose-400"></i>
-                                    <span>Registrar Revogação</span>
+                                    <span>Registrar Ação no Checklist</span>
                                 </div>
                                 <div>
-                                    <label class="block text-[11px] text-slate-400 mb-1">Evidência / ID de Chamado (Obrigatório)</label>
-                                    <input type="text" name="evidencia_revogacao" required placeholder="Ex: Ticket GLPI #4582 / Conta desativada no AD" class="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500">
+                                    <label class="block text-[11px] text-slate-400 mb-1">Ação / Status</label>
+                                    <select name="status" class="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white focus:outline-none focus:ring-1 focus:ring-sky-500">
+                                        <option value="REVOGADO" selected>Revogado com Sucesso</option>
+                                        <option value="FALHA">Falha / Bloqueado com Erro</option>
+                                        <option value="NAO_APLICAVEL">Não Aplicável</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] text-slate-400 mb-1">Evidência / ID de Chamado (Obrigatório em Críticos/LGPD)</label>
+                                    <input type="text" name="evidencia_revogacao" placeholder="Ex: Ticket GLPI #4582 / Conta desativada no AD" class="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500">
                                 </div>
                                 <div>
                                     <label class="block text-[11px] text-slate-400 mb-1">Observações Técnicas (Opcional)</label>
@@ -190,7 +233,7 @@
                                 </div>
                                 <button type="submit" class="w-full py-2 px-3 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white transition flex items-center justify-center space-x-1.5 shadow-md shadow-rose-600/20">
                                     <i data-lucide="check" class="w-3.5 h-3.5"></i>
-                                    <span>Confirmar Exclusão de Acesso</span>
+                                    <span>Confirmar Ação de Offboarding</span>
                                 </button>
                             </form>
                         {% endif %}

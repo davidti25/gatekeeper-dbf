@@ -144,12 +144,20 @@
                                     {{ item.vinculo_acesso.identificador_conta }}
                                 </td>
                                 <td class="p-3">
-                                    {% if item.revogado %}
+                                    {% if item.status == 'REVOGADO' %}
                                     <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
                                         REVOGADO
                                     </span>
-                                    {% else %}
+                                    {% elif item.status == 'FALHA' %}
                                     <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+                                        FALHA / ERRO
+                                    </span>
+                                    {% elif item.status == 'NAO_APLICAVEL' %}
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-300">
+                                        NÃO APLICÁVEL
+                                    </span>
+                                    {% else %}
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
                                         PENDENTE
                                     </span>
                                     {% endif %}

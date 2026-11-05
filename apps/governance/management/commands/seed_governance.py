@@ -325,6 +325,7 @@ class Command(BaseCommand):
             processo=proc_rodrigo,
             vinculo_acesso=v_rodrigo_vpn,
             defaults={
+                "status": ItemChecklistOffboarding.StatusItem.REVOGADO,
                 "revogado": True,
                 "data_revogacao": timezone.now() - timedelta(hours=2),
                 "responsavel_revogacao": admin_user,
@@ -341,7 +342,10 @@ class Command(BaseCommand):
         ItemChecklistOffboarding.objects.get_or_create(
             processo=proc_rodrigo,
             vinculo_acesso=v_rodrigo_gsuite,
-            defaults={"revogado": False}
+            defaults={
+                "status": ItemChecklistOffboarding.StatusItem.PENDENTE,
+                "revogado": False,
+            }
         )
 
         # Beatriz (RH - Offboarding 100% Concluído e Auditado)
@@ -370,6 +374,7 @@ class Command(BaseCommand):
             processo=proc_beatriz,
             vinculo_acesso=v_beatriz_gsuite,
             defaults={
+                "status": ItemChecklistOffboarding.StatusItem.REVOGADO,
                 "revogado": True,
                 "data_revogacao": timezone.now() - timedelta(days=6),
                 "responsavel_revogacao": admin_user,

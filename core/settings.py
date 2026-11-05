@@ -36,19 +36,6 @@ ALLOWED_HOSTS = env('ALLOWED_HOSTS')
 if 'testserver' not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append('testserver')
 
-# Compatibilidade Python 3.14 com Django 5.1 Template Context copy
-import sys
-if sys.version_info >= (3, 14):
-    from django.template import context as django_context
-    def _py314_context_copy(self):
-        obj = self.__class__.__new__(self.__class__)
-        obj.__dict__.update(self.__dict__)
-        obj.dicts = self.dicts[:]
-        return obj
-    django_context.BaseContext.__copy__ = _py314_context_copy
-
-
-
 # Application definition
 
 INSTALLED_APPS = [
@@ -58,6 +45,9 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+
+    # Auditoria de Alterações e Snapshots de Versão (CIS 5.5 / LGPD)
+    'simple_history',
 
     # Módulos Internos do GateKeeper-DBF
     'apps.governance',
@@ -72,6 +62,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.LoginRequiredMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # Middleware para capturar o usuário que realizou a alteração no histórico
+    'simple_history.middleware.HistoryRequestMiddleware',
 ]
 
 # Autenticação & Redirecionamentos (Secure by Default)

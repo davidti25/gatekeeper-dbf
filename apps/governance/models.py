@@ -5,11 +5,14 @@ Estruturado segundo boas práticas de segurança, rastreabilidade e compliance:
 - CIS Controls v8 (Controle 5 - Account Management)
 - MITRE ATT&CK: Prevenção a T1078 (Valid Accounts / Contas Órfãs)
 - LGPD (Lei 13.709/2018 - Art. 46: Auditoria de Acessos e Proteção de Dados)
+- Fase 1: Integridade da Auditoria, Imutabilidade (PROTECT) e Histórico de Alterações
 """
 
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
+from django.core.exceptions import ValidationError
+from simple_history.models import HistoricalRecords
 
 
 class Localidade(models.Model):
@@ -120,6 +123,9 @@ class Sistema(models.Model):
     criado_em = models.DateTimeField(auto_now_add=True, verbose_name="Criado em")
     atualizado_em = models.DateTimeField(auto_now=True, verbose_name="Atualizado em")
 
+    # Auditoria de Alterações (Fase 1.2)
+    history = HistoricalRecords()
+
     class Meta:
         verbose_name = "Sistema / Ativo Corporativo"
         verbose_name_plural = "Sistemas / Ativos Corporativos"
@@ -196,6 +202,9 @@ class Colaborador(models.Model):
     criado_em = models.DateTimeField(auto_now_add=True, verbose_name="Cadastrado em")
     atualizado_em = models.DateTimeField(auto_now=True, verbose_name="Atualizado em")
 
+    # Auditoria de Alterações (Fase 1.2)
+    history = HistoricalRecords()
+
     class Meta:
         verbose_name = "Colaborador"
         verbose_name_plural = "Colaboradores"
@@ -209,11 +218,21 @@ class Colaborador(models.Model):
         """Retorna o total de acessos atualmente ativos concedidos a este colaborador."""
         return self.vinculos_acesso.filter(status=VinculoAcesso.StatusAcesso.ATIVO).count()
 
+    @property
+    def processo_offboarding(self):
+        """Retorna o processo de offboarding ativo ou o mais recente (compatibilidade de templates)."""
+        return (
+            self.processos_offboarding.filter(
+                status__in=[ProcessoOffboarding.StatusOffboarding.INICIADO, ProcessoOffboarding.StatusOffboarding.PENDENTE]
+            ).first() or self.processos_offboarding.order_by('-iniciado_em').first()
+        )
+
 
 class VinculoAcesso(models.Model):
     """
     Matriz de Acessos: Registro granular de qual credencial/acesso pertence a quem.
     Garante trilha de auditoria: quem concedeu, quando concedeu, quem revogou e quando revogou.
+    Protegido contra exclusão acidental (on_delete=models.PROTECT).
     """
     class StatusAcesso(models.TextChoices):
         ATIVO = 'ATIVO', 'Ativo'
@@ -222,7 +241,7 @@ class VinculoAcesso(models.Model):
 
     colaborador = models.ForeignKey(
         Colaborador,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,  # Fase 1.1: Proteção de integridade no banco
         related_name='vinculos_acesso',
         verbose_name="Colaborador"
     )
@@ -273,6 +292,9 @@ class VinculoAcesso(models.Model):
     criado_em = models.DateTimeField(auto_now_add=True, verbose_name="Criado em")
     atualizado_em = models.DateTimeField(auto_now=True, verbose_name="Atualizado em")
 
+    # Auditoria de Alterações (Fase 1.2)
+    history = HistoricalRecords()
+
     class Meta:
         verbose_name = "Vínculo de Acesso (Matriz RBAC)"
         verbose_name_plural = "Vínculos de Acesso (Matriz RBAC)"
@@ -282,21 +304,35 @@ class VinculoAcesso(models.Model):
     def __str__(self):
         return f"{self.colaborador.nome_completo} -> {self.sistema.nome} ({self.identificador_conta}) [{self.get_status_display()}]"
 
+    def clean(self):
+        """Validação de segurança: Bloqueia concessão de novos acessos a colaboradores desligados ou em offboarding."""
+        super().clean()
+        if self.colaborador_id:
+            if self.colaborador.status == Colaborador.StatusColaborador.DESLIGADO:
+                raise ValidationError("Não é permitido conceder novos acessos a um colaborador já desligado.")
+            if hasattr(self.colaborador, 'processos_offboarding'):
+                em_andamento = self.colaborador.processos_offboarding.filter(
+                    status__in=[ProcessoOffboarding.StatusOffboarding.INICIADO, ProcessoOffboarding.StatusOffboarding.PENDENTE]
+                ).exists()
+                if em_andamento:
+                    raise ValidationError("Não é permitido conceder novos acessos a um colaborador em processo de offboarding.")
+
 
 class ProcessoOffboarding(models.Model):
     """
     Registro formal de Desligamento e Revogação de Acessos.
     Atende aos requisitos de auditoria do CIS Controls v8 (5.5) e LGPD.
+    Suporta recontratações históricas com ForeignKey e UniqueConstraint para processos ativos.
     """
     class StatusOffboarding(models.TextChoices):
         INICIADO = 'INICIADO', 'Iniciado / Em Andamento'
         CONCLUIDO = 'CONCLUIDO', 'Concluído (100% dos Acessos Revogados)'
         PENDENTE = 'PENDENTE', 'Pendente / Bloqueado com Erro de Revogação'
 
-    colaborador = models.OneToOneField(
+    colaborador = models.ForeignKey(
         Colaborador,
-        on_delete=models.CASCADE,
-        related_name='processo_offboarding',
+        on_delete=models.PROTECT,  # Fase 1.1: Proteção de integridade no banco
+        related_name='processos_offboarding',
         verbose_name="Colaborador Desligado"
     )
     status = models.CharField(
@@ -315,6 +351,9 @@ class ProcessoOffboarding(models.Model):
     )
     observacoes = models.TextField(blank=True, verbose_name="Observações de Encerramento")
 
+    # Auditoria de Alterações (Fase 1.2)
+    history = HistoricalRecords()
+
     class Meta:
         verbose_name = "Processo de Offboarding"
         verbose_name_plural = "Processos de Offboarding"
@@ -322,6 +361,13 @@ class ProcessoOffboarding(models.Model):
         permissions = [
             ("iniciar_offboarding", "Pode iniciar processo de offboarding"),
             ("revogar_item_offboarding", "Pode revogar item do checklist de offboarding"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['colaborador'],
+                condition=~models.Q(status='CONCLUIDO'),
+                name='unique_active_offboarding_per_colaborador'
+            )
         ]
 
     def __str__(self):
@@ -333,20 +379,31 @@ class ProcessoOffboarding(models.Model):
 
     @property
     def total_revogados(self):
-        return self.itens_checklist.filter(revogado=True).count()
+        return self.itens_checklist.filter(status=ItemChecklistOffboarding.StatusItem.REVOGADO).count()
+
+    @property
+    def total_resolvidos(self):
+        """Itens que já não representam pendência ativa (Revogados, Falhas registradas ou Não Aplicáveis)."""
+        return self.itens_checklist.exclude(status=ItemChecklistOffboarding.StatusItem.PENDENTE).count()
 
     @property
     def percentual_concluido(self):
         total = self.total_itens
         if total == 0:
             return 100
-        return int((self.total_revogados / total) * 100)
+        return int((self.total_resolvidos / total) * 100)
 
 
 class ItemChecklistOffboarding(models.Model):
     """
     Item individual do checklist de revogação por sistema para um colaborador em desligamento.
     """
+    class StatusItem(models.TextChoices):
+        PENDENTE = 'PENDENTE', 'Pendente'
+        REVOGADO = 'REVOGADO', 'Revogado com Sucesso'
+        FALHA = 'FALHA', 'Falha / Bloqueado com Erro'
+        NAO_APLICAVEL = 'NAO_APLICAVEL', 'Não Aplicável'
+
     processo = models.ForeignKey(
         ProcessoOffboarding,
         on_delete=models.CASCADE,
@@ -355,9 +412,15 @@ class ItemChecklistOffboarding(models.Model):
     )
     vinculo_acesso = models.ForeignKey(
         VinculoAcesso,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,  # Fase 1.1: Proteção de integridade no banco
         related_name='itens_offboarding',
         verbose_name="Acesso a ser Revogado"
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=StatusItem.choices,
+        default=StatusItem.PENDENTE,
+        verbose_name="Status da Revogação"
     )
     revogado = models.BooleanField(default=False, verbose_name="Acesso Revogado com Sucesso?")
     data_revogacao = models.DateTimeField(null=True, blank=True, verbose_name="Data/Hora da Revogação")
@@ -375,11 +438,13 @@ class ItemChecklistOffboarding(models.Model):
     )
     observacao = models.TextField(blank=True, verbose_name="Observações Técnicas")
 
+    # Auditoria de Alterações (Fase 1.2)
+    history = HistoricalRecords()
+
     class Meta:
         verbose_name = "Item de Checklist de Offboarding"
         verbose_name_plural = "Itens de Checklist de Offboarding"
         ordering = ['processo', 'vinculo_acesso__sistema__nome']
 
     def __str__(self):
-        status_txt = "REVOGADO" if self.revogado else "PENDENTE"
-        return f"[{status_txt}] {self.vinculo_acesso.sistema.nome} ({self.vinculo_acesso.identificador_conta})"
+        return f"[{self.get_status_display()}] {self.vinculo_acesso.sistema.nome} ({self.vinculo_acesso.identificador_conta})"

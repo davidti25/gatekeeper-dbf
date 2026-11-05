@@ -14,6 +14,8 @@ from django.urls import reverse
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.utils import timezone
+from django.db.models import ProtectedError
+from django.core.exceptions import ValidationError
 from .models import (
     Localidade,
     Departamento,
@@ -25,6 +27,8 @@ from .models import (
     ProcessoOffboarding,
     ItemChecklistOffboarding,
 )
+from .forms import RevogacaoItemForm
+from .services import revogar_item_checklist
 
 User = get_user_model()
 
@@ -240,4 +244,246 @@ class GovernanceSecurityAndModelTests(TestCase):
         self.assertEqual(resp.status_code, 302)
         processo = ProcessoOffboarding.objects.get(colaborador=self.colaborador)
         self.assertEqual(processo.responsavel_ti, root_user)
+
+
+class Phase1AuditAndIntegrityTests(TestCase):
+    """
+    Testes de Integridade da Auditoria & Regras de Negócio (Fase 1).
+    Valida:
+    - 1.1: on_delete=models.PROTECT contra expurgo acidental de dados
+    - 1.2: Rastreabilidade temporal com django-simple-history
+    - 1.3: Transações atômicas, idempotência e bloqueio de concorrência
+    - 1.4: Validação estrita de evidências em sistemas críticos e escopo LGPD
+    - 1.5: Suporte a recontratação (UniqueConstraint condicional)
+    """
+    def setUp(self):
+        self.client = Client()
+
+        self.grupo_analista = Group.objects.get(name='Analista TI')
+        self.user_analista = User.objects.create_user(
+            username='secops.analyst',
+            email='analyst@empresa.com.br',
+            password='ComplexPassword123!'
+        )
+        self.user_analista.groups.add(self.grupo_analista)
+
+        self.matriz = Localidade.objects.create(
+            nome='Filial Salvador',
+            codigo='SSA-01',
+            cidade='Salvador',
+            estado='BA'
+        )
+        self.depto = Departamento.objects.create(
+            nome='Operações Financeiras',
+            sigla='FIN',
+            descricao='Controladoria e Financeiro'
+        )
+        self.cargo = Cargo.objects.create(
+            nome='Analista Financeiro Pleno',
+            departamento=self.depto
+        )
+
+        self.sistema_critico = Sistema.objects.create(
+            nome='Internet Banking PJ',
+            tipo=Sistema.TipoSistema.SAAS,
+            criticidade=Sistema.Criticidade.CRITICA,
+            armazena_dados_lgpd=True,
+            gestor_responsavel='Segurança da Informação'
+        )
+
+        self.sistema_interno = Sistema.objects.create(
+            nome='Wiki Interna Redmine',
+            tipo=Sistema.TipoSistema.ONPREM,
+            criticidade=Sistema.Criticidade.BAIXA,
+            armazena_dados_lgpd=False,
+            gestor_responsavel='TI Suporte'
+        )
+
+        self.colaborador = Colaborador.objects.create(
+            nome_completo='Mariana Oliveira',
+            matricula='FIN-8812',
+            email_corporativo='mariana.oliveira@empresa.com.br',
+            localidade=self.matriz,
+            departamento=self.depto,
+            cargo=self.cargo,
+            status=Colaborador.StatusColaborador.ATIVO,
+            data_admissao=timezone.now().date()
+        )
+
+    def test_10_protecao_exclusao_acidental_on_delete_protect(self):
+        """1.1: Colaboradores com vínculos de acesso ou processos de offboarding não podem ser deletados (PROTECT)."""
+        vinculo = VinculoAcesso.objects.create(
+            colaborador=self.colaborador,
+            sistema=self.sistema_interno,
+            identificador_conta='mariana.wiki',
+            concedido_por=self.user_analista
+        )
+
+        # Tentativa de exclusão do colaborador com vínculo deve falhar
+        with self.assertRaises(ProtectedError):
+            self.colaborador.delete()
+
+        # Cria processo e item de checklist
+        processo = ProcessoOffboarding.objects.create(
+            colaborador=self.colaborador,
+            responsavel_ti=self.user_analista,
+            status=ProcessoOffboarding.StatusOffboarding.INICIADO
+        )
+        item = ItemChecklistOffboarding.objects.create(
+            processo=processo,
+            vinculo_acesso=vinculo
+        )
+
+        # Tentativa de exclusão do vínculo com item no checklist deve falhar
+        with self.assertRaises(ProtectedError):
+            vinculo.delete()
+
+    def test_11_bloqueio_concessao_acesso_colaborador_desligado_ou_em_offboarding(self):
+        """1.1: Regra de negócio impede conceder novos acessos a colaboradores desligados ou em offboarding."""
+        # 1. Colaborador em processo de offboarding ativo
+        ProcessoOffboarding.objects.create(
+            colaborador=self.colaborador,
+            responsavel_ti=self.user_analista,
+            status=ProcessoOffboarding.StatusOffboarding.INICIADO
+        )
+
+        novo_vinculo = VinculoAcesso(
+            colaborador=self.colaborador,
+            sistema=self.sistema_critico,
+            identificador_conta='mariana.banking',
+            concedido_por=self.user_analista
+        )
+        with self.assertRaises(ValidationError) as ctx:
+            novo_vinculo.clean()
+        self.assertIn("em processo de offboarding", str(ctx.exception))
+
+        # 2. Colaborador desligado
+        self.colaborador.status = Colaborador.StatusColaborador.DESLIGADO
+        self.colaborador.save()
+
+        novo_vinculo_desligado = VinculoAcesso(
+            colaborador=self.colaborador,
+            sistema=self.sistema_interno,
+            identificador_conta='mariana.wiki2',
+            concedido_por=self.user_analista
+        )
+        with self.assertRaises(ValidationError) as ctx:
+            novo_vinculo_desligado.clean()
+        self.assertIn("colaborador já desligado", str(ctx.exception))
+
+    def test_12_servico_revogacao_atomica_e_idempotencia(self):
+        """1.3: Serviço revogar_item_checklist executa atomicamente e rejeita sobrescrita de itens já resolvidos."""
+        vinculo = VinculoAcesso.objects.create(
+            colaborador=self.colaborador,
+            sistema=self.sistema_interno,
+            identificador_conta='mariana.wiki',
+            concedido_por=self.user_analista
+        )
+        processo = ProcessoOffboarding.objects.create(
+            colaborador=self.colaborador,
+            responsavel_ti=self.user_analista,
+            status=ProcessoOffboarding.StatusOffboarding.INICIADO
+        )
+        item = ItemChecklistOffboarding.objects.create(
+            processo=processo,
+            vinculo_acesso=vinculo
+        )
+
+        # 1. Primeira execução: Sucesso
+        item_revogado, proc_atualizado = revogar_item_checklist(
+            item_id=item.pk,
+            responsavel=self.user_analista,
+            evidencia="Ticket ITSM #10293",
+            observacao="Conta desativada",
+            status=ItemChecklistOffboarding.StatusItem.REVOGADO
+        )
+        self.assertEqual(item_revogado.status, ItemChecklistOffboarding.StatusItem.REVOGADO)
+        self.assertTrue(item_revogado.revogado)
+        self.assertEqual(proc_atualizado.status, ProcessoOffboarding.StatusOffboarding.CONCLUIDO)
+
+        # 2. Segunda execução (tentativa de double submit/repetição): Deve falhar por idempotência
+        with self.assertRaises(ValidationError) as ctx:
+            revogar_item_checklist(
+                item_id=item.pk,
+                responsavel=self.user_analista,
+                evidencia="Outro ticket",
+                status=ItemChecklistOffboarding.StatusItem.REVOGADO
+            )
+        self.assertIn("já foi finalizado anteriormente", str(ctx.exception))
+
+    def test_13_validacao_formulario_evidencia_obrigatoria_sistemas_criticos_e_lgpd(self):
+        """1.4: RevogacaoItemForm exige evidência em sistemas críticos/LGPD e rejeita descrições genéricas."""
+        vinculo_critico = VinculoAcesso.objects.create(
+            colaborador=self.colaborador,
+            sistema=self.sistema_critico,
+            identificador_conta='mariana.ib',
+            concedido_por=self.user_analista
+        )
+        processo = ProcessoOffboarding.objects.create(
+            colaborador=self.colaborador,
+            responsavel_ti=self.user_analista
+        )
+        item_critico = ItemChecklistOffboarding.objects.create(
+            processo=processo,
+            vinculo_acesso=vinculo_critico
+        )
+
+        # 1. Sem evidência em sistema crítico/LGPD: Inválido
+        form_vazio = RevogacaoItemForm(
+            data={'status': 'REVOGADO', 'evidencia_revogacao': ''},
+            item=item_critico
+        )
+        self.assertFalse(form_vazio.is_valid())
+        self.assertIn('evidencia_revogacao', form_vazio.errors)
+
+        # 2. Com evidência genérica ("revogado manualmente"): Inválido
+        form_generico = RevogacaoItemForm(
+            data={'status': 'REVOGADO', 'evidencia_revogacao': 'Revogado manualmente'},
+            item=item_critico
+        )
+        self.assertFalse(form_generico.is_valid())
+        self.assertIn('evidencia_revogacao', form_generico.errors)
+
+        # 3. Com evidência auditável (Ticket #...): Válido
+        form_valido = RevogacaoItemForm(
+            data={'status': 'REVOGADO', 'evidencia_revogacao': 'Ticket GLPI #8841 - Chave revogada'},
+            item=item_critico
+        )
+        self.assertTrue(form_valido.is_valid())
+
+    def test_14_rastreabilidade_historica_simple_history(self):
+        """1.2: django-simple-history grava snapshots temporais de alterações em entidades sensíveis."""
+        # Altera dados do colaborador
+        self.colaborador.nome_completo = "Mariana Oliveira Santos"
+        self.colaborador.save()
+
+        # Deve haver 2 registros no histórico (criação e atualização)
+        historico = self.colaborador.history.all()
+        self.assertGreaterEqual(historico.count(), 2)
+        self.assertEqual(historico[0].nome_completo, "Mariana Oliveira Santos")
+        self.assertEqual(historico[1].nome_completo, "Mariana Oliveira")
+
+    def test_15_suporte_recontratacao_colaborador(self):
+        """1.5: Suporte a recontratação com histórico preservado e sem colisão de UniqueConstraint."""
+        # Primeiro ciclo: offboarding concluído
+        processo_1 = ProcessoOffboarding.objects.create(
+            colaborador=self.colaborador,
+            responsavel_ti=self.user_analista,
+            status=ProcessoOffboarding.StatusOffboarding.CONCLUIDO,
+            concluido_em=timezone.now()
+        )
+
+        # Recontratação: Colaborador reativado
+        self.colaborador.status = Colaborador.StatusColaborador.ATIVO
+        self.colaborador.save()
+
+        # Segundo ciclo de offboarding futuro: Deve ser permitido criar novo processo ativo
+        processo_2 = ProcessoOffboarding.objects.create(
+            colaborador=self.colaborador,
+            responsavel_ti=self.user_analista,
+            status=ProcessoOffboarding.StatusOffboarding.INICIADO
+        )
+        self.assertIsNotNone(processo_2.pk)
+        self.assertNotEqual(processo_1.pk, processo_2.pk)
+        self.assertEqual(self.colaborador.processos_offboarding.count(), 2)
 

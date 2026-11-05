@@ -49,3 +49,4 @@ class Command(BaseCommand):
         self.stdout.write(f"   • Usuário: {username}")
         self.stdout.write(f"   • Senha:   {password}")
         self.stdout.write("   • Acesso:  Superuser (bypass total de permissões / estilo root)")
+

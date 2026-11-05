@@ -17,6 +17,7 @@ from django.contrib import messages
 from django.utils import timezone
 from django.db.models import Count, Q
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from .models import (
     Colaborador,
     Sistema,
@@ -27,6 +28,8 @@ from .models import (
     Departamento,
     Localidade,
 )
+from .forms import RevogacaoItemForm
+from .services import revogar_item_checklist
 
 User = get_user_model()
 
@@ -146,19 +149,29 @@ def iniciar_offboarding_view(request, pk):
     Inicia o fluxo formal de offboarding para um colaborador.
     Exige permissão estrita 'governance.iniciar_offboarding' (Analista TI / Gestor SecOps).
     Garante não-repúdio absoluto: o responsável é estritamente request.user.
+    Fase 1: Suporte a recontratação, desligamento imediato para evitar concessões e itens para todos os acessos não-revogados.
     """
     if request.method != 'POST':
         return redirect('colaborador_detail', pk=pk)
 
     colaborador = get_object_or_404(Colaborador, pk=pk)
 
-    # Evita duplicação do processo
-    if hasattr(colaborador, 'processo_offboarding'):
+    # Evita duplicação de processos ativos para o mesmo colaborador
+    processo_ativo = colaborador.processos_offboarding.filter(
+        status__in=[ProcessoOffboarding.StatusOffboarding.INICIADO, ProcessoOffboarding.StatusOffboarding.PENDENTE]
+    ).first()
+    if processo_ativo:
         messages.warning(request, f"O colaborador {colaborador.nome_completo} já possui um processo de offboarding em andamento.")
-        return redirect('offboarding_detail', pk=colaborador.processo_offboarding.pk)
+        return redirect('offboarding_detail', pk=processo_ativo.pk)
 
     # Não-repúdio: operador estrito logado
     responsavel = request.user
+
+    # Imediatamente marca o colaborador como DESLIGADO (para evitar novas concessões de acesso durante o processo)
+    colaborador.status = Colaborador.StatusColaborador.DESLIGADO
+    if not colaborador.data_desligamento:
+        colaborador.data_desligamento = timezone.localdate()
+    colaborador.save()
 
     # Cria o processo formal
     processo = ProcessoOffboarding.objects.create(
@@ -168,25 +181,22 @@ def iniciar_offboarding_view(request, pk):
         observacoes=request.POST.get('motivo_desligamento', 'Desligamento Formal')
     )
 
-    # Gera os itens do checklist para todos os acessos atualmente ativos
-    acessos_ativos = colaborador.vinculos_acesso.filter(status=VinculoAcesso.StatusAcesso.ATIVO)
-    for vinculo in acessos_ativos:
+    # Gera os itens do checklist para todos os acessos que não estejam revogados (ATIVO, BLOQUEADO)
+    acessos_a_revogar = colaborador.vinculos_acesso.exclude(status=VinculoAcesso.StatusAcesso.REVOGADO)
+    for vinculo in acessos_a_revogar:
         ItemChecklistOffboarding.objects.create(
             processo=processo,
             vinculo_acesso=vinculo
         )
 
     # Se o colaborador não possuía nenhum acesso, conclui imediatamente
-    if not acessos_ativos.exists():
+    if not acessos_a_revogar.exists():
         processo.status = ProcessoOffboarding.StatusOffboarding.CONCLUIDO
         processo.concluido_em = timezone.now()
         processo.save()
-        colaborador.status = Colaborador.StatusColaborador.DESLIGADO
-        colaborador.data_desligamento = timezone.now().date()
-        colaborador.save()
         messages.success(request, f"Offboarding de {colaborador.nome_completo} concluído (não possuía acessos vinculados).")
     else:
-        messages.success(request, f"Processo de Offboarding iniciado para {colaborador.nome_completo}. {acessos_ativos.count()} acessos pendentes de revogação.")
+        messages.success(request, f"Processo de Offboarding iniciado para {colaborador.nome_completo}. {acessos_a_revogar.count()} acessos pendentes de revogação.")
 
     return redirect('offboarding_detail', pk=processo.pk)
 
@@ -235,7 +245,7 @@ class OffboardingDetailView(PermissionRequiredMixin, DetailView):
 def revogar_item_offboarding_view(request, pk, item_id):
     """
     Executa a revogação de um item específico do checklist de offboarding,
-    registrando a evidência e atualizando o status do vínculo.
+    validando evidência e executando serviço transacional atômico.
     Exige permissão estrita 'governance.revogar_item_offboarding'.
     Garante não-repúdio absoluto: responsavel = request.user.
     """
@@ -245,44 +255,30 @@ def revogar_item_offboarding_view(request, pk, item_id):
     processo = get_object_or_404(ProcessoOffboarding, pk=pk)
     item = get_object_or_404(ItemChecklistOffboarding, pk=item_id, processo=processo)
 
-    # Não-repúdio: o executor é estritamente request.user
-    responsavel = request.user
-    evidencia = request.POST.get('evidencia_revogacao', '').strip()
-    observacao = request.POST.get('observacao', '').strip()
+    form = RevogacaoItemForm(request.POST, item=item)
+    if not form.is_valid():
+        for field, errors in form.errors.items():
+            for error in errors:
+                messages.error(request, error)
+        return redirect('offboarding_detail', pk=pk)
 
-    # Atualiza o item do checklist
-    agora = timezone.now()
-    item.revogado = True
-    item.data_revogacao = agora
-    item.responsavel_revogacao = responsavel
-    item.evidencia_revogacao = evidencia or 'Revogado manualmente via painel GateKeeper-DBF.'
-    item.observacao = observacao
-    item.save()
-
-    # Atualiza o Vínculo de Acesso correspondente
-    vinculo = item.vinculo_acesso
-    vinculo.status = VinculoAcesso.StatusAcesso.REVOGADO
-    vinculo.data_revogacao = agora
-    vinculo.revogado_por = responsavel
-    vinculo.justificativa = f"Offboarding executado. Evidência: {item.evidencia_revogacao}"
-    vinculo.save()
-
-    # Verifica se todos os itens foram concluídos
-    if processo.total_itens > 0 and processo.total_revogados == processo.total_itens:
-        processo.status = ProcessoOffboarding.StatusOffboarding.CONCLUIDO
-        processo.concluido_em = agora
-        processo.save()
-
-        # Atualiza o Colaborador como formalmente desligado
-        colab = processo.colaborador
-        colab.status = Colaborador.StatusColaborador.DESLIGADO
-        if not colab.data_desligamento:
-            colab.data_desligamento = agora.date()
-        colab.save()
-
-        messages.success(request, f"🎉 100% dos acessos de {colab.nome_completo} foram revogados! Processo de Offboarding concluído com sucesso e auditado.")
-    else:
-        messages.success(request, f"Acesso ao sistema '{vinculo.sistema.nome}' ({vinculo.identificador_conta}) marcado como revogado.")
+    cleaned_data = form.cleaned_data
+    try:
+        item, proc = revogar_item_checklist(
+            item_id=item.pk,
+            responsavel=request.user,
+            evidencia=cleaned_data.get('evidencia_revogacao', ''),
+            observacao=cleaned_data.get('observacao', ''),
+            status=cleaned_data.get('status', ItemChecklistOffboarding.StatusItem.REVOGADO),
+        )
+        if proc.status == ProcessoOffboarding.StatusOffboarding.CONCLUIDO:
+            messages.success(request, f"🎉 100% dos acessos de {proc.colaborador.nome_completo} foram resolvidos! Processo de Offboarding concluído com sucesso e auditado.")
+        elif proc.status == ProcessoOffboarding.StatusOffboarding.PENDENTE:
+            messages.warning(request, f"⚠️ Item marcado como '{item.get_status_display()}'. O processo de offboarding possui pendências ou bloqueios a resolver.")
+        else:
+            messages.success(request, f"Acesso ao sistema '{item.vinculo_acesso.sistema.nome}' ({item.vinculo_acesso.identificador_conta}) marcado como {item.get_status_display()}.")
+    except ValidationError as e:
+        messages.error(request, str(e.message if hasattr(e, 'message') else e))
 
     return redirect('offboarding_detail', pk=pk)
 

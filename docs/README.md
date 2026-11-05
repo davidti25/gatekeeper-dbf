@@ -20,6 +20,7 @@ Bem-vindo à Biblioteca de Documentação do **GateKeeper-DBF**. Este repositór
 * [2026-11-05 - Fase 2: Fundação Django, Hardening & Modelagem IAM](file:///home/davidbf/dev/GateKeeper-DBF/docs/biblioteca/2026-11/2026-11-05-fase-2-fundacao-django-e-modelagem.md)
 * [2026-11-05 - Fase 3: Dashboard Executivo & Central de Offboarding Interativo](file:///home/davidbf/dev/GateKeeper-DBF/docs/biblioteca/2026-11/2026-11-05-fase-3-dashboard-e-central-de-offboarding.md)
 * [2026-11-05 - Plano de Ação: Fase 0 — Emergência (Autenticação Obrigatória, RBAC & Hardening)](file:///home/davidbf/dev/GateKeeper-DBF/docs/biblioteca/2026-11/2026-11-05-fase-0-emergencia-autenticacao-e-rbac.md)
+* [2026-11-05 - Plano de Ação: Fase 1 — Integridade da Auditoria & Regras de Negócio](file:///home/davidbf/dev/GateKeeper-DBF/docs/biblioteca/2026-11/2026-11-05-fase-1-integridade-auditoria-e-regras-de-negocio.md)
 
 ---
 

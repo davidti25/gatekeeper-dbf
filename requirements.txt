@@ -1,11 +1,12 @@
 # ==============================================================================
-# GateKeeper-DBF - Dependências do Projeto (Python & Django)
-# Desenvolvido por David BF
+# GateKeeper-DBF - Dependências do Projeto
 # ==============================================================================
 
-# Framework Web Seguro
-Django>=5.1.0,<5.2.0
+# Framework Web Django (Versão LTS 5.2 com suporte estendido até 2028)
+Django>=5.2.0,<5.3.0
 
 # Gerenciador Seguro de Variáveis de Ambiente (.env)
 django-environ>=0.11.0
 
+# Trilha de Auditoria e Versionamento de Registros (Fase 1 - CIS 5.5 / LGPD)
+django-simple-history>=3.7.0,<4.0.0
