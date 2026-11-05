@@ -29,6 +29,7 @@ Bem-vindo à Biblioteca de Documentação do **GateKeeper-DBF**. Este repositór
 * [2026-11-05 - Plano de Ação v2: Fase 7 — Trilha de Auditoria Confiável (SOC / SIEM)](biblioteca/2026-11-05-fase-7-trilha-de-auditoria-confiavel-soc-siem.md)
 * [2026-11-05 - Plano de Ação v2: Fase 8 — Infraestrutura & Deploy Seguro](biblioteca/2026-11-05-fase-8-infraestrutura-e-deploy-seguro.md)
 * [2026-11-05 - Plano de Ação v2: Fase 9 — Front-end, Limpeza & Testes de Regressão](biblioteca/2026-11/2026-11-05-fase-9-frontend-limpeza-e-testes-de-regressao.md)
+* [2026-11-05 - Plano de Ação v3: Fases 10 a 12 — Integridade, MFA, Infraestrutura & Deploy](biblioteca/2026-11/2026-11-05-fase-10-a-12-plano-v3-integridade-mfa-e-deploy.md)
 
 ---
 
@@ -36,3 +37,4 @@ Bem-vindo à Biblioteca de Documentação do **GateKeeper-DBF**. Este repositór
 
 * [2026-11-05 - Plano de Ação: Segurança & Qualidade (Fases 0–4)](action-plan/2026-11-05-plano-de-acao-seguranca-e-qualidade.md)
 * [2026-11-05 - Plano de Ação v2: Brechas Pós-Implementação (Fases 5–9)](action-plan/2026-11-05-plano-de-acao-v2-brechas-pos-implementacao.md)
+* [2026-11-05 - Plano de Ação v3: Integridade, MFA e Deploy (Fases 10–12)](action-plan/2026-11-05-plano-de-acao-v3-integridade-mfa-e-deploy.md)

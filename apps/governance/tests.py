@@ -23,8 +23,9 @@ from allauth.mfa.models import Authenticator
 from django.conf import settings
 from django.contrib import admin
 from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
-from django.core.exceptions import ValidationError
+from django.contrib.auth.models import Group, Permission
+from django.contrib.auth.signals import user_login_failed
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.management import call_command
 from django.db import OperationalError
 from django.db.models import ProtectedError
@@ -1810,3 +1811,287 @@ class AllauthStylingTests(TestCase):
                 origin=origem,
             ).render(Context({}))
             self.assertIn(f'class="{classe}"', html, tags or "(sem tags)")
+
+
+class Phase10To12IntegrityAndDeployTests(TestCase):
+    """
+    Testes de integridade, identidade e deploy para as Fases 10, 11 e 12 (Plano v3).
+    Cobre os 12 achados da Tabela 12.3:
+    10.1 - Admin somente leitura para offboarding e permissões restritas do Analista TI
+    10.2 - TOTP tolerância zero padrão (sem replay/reuso após 30s)
+    10.3 - Cache compartilhado via dbcache (não LocMemCache/DummyCache)
+    10.4 - Rate limiting por IP e por conta (key)
+    10.5 - Exigência de MFA por permissão efetiva (além de grupo)
+    10.6 - System checks gatekeeper.E001-E004 para deploy
+    11.1 - Serviço migrate com createcachetable no compose
+    11.2 - HSTS sem includeSubDomains no Caddyfile
+    11.3 - Script de backup atômico e sem credenciais na CLI
+    11.4 - CSP estrita com base-uri e object-src 'none'
+    12.1 - Validação de permissão para 'Não Aplicável' no serviço
+    12.2 - Registro de e-mail em logs de falha de login
+    """
+
+    def setUp(self):
+        self.client = Client()
+
+        self.grupo_analista = Group.objects.get(name="Analista TI")
+        self.grupo_gestor = Group.objects.get(name="Gestor SecOps")
+
+        self.user_analista = User.objects.create_user(
+            username="analista.p3", email="analista.p3@empresa.com.br", password="ComplexPassword123!", is_staff=True
+        )
+        self.user_analista.groups.add(self.grupo_analista)
+        Authenticator.objects.create(
+            user=self.user_analista, type=Authenticator.Type.TOTP, data={"secret": "JBSWY3DPEHPK3PXP"}
+        )
+
+        self.user_gestor = User.objects.create_user(
+            username="gestor.p3", email="gestor.p3@empresa.com.br", password="ComplexPassword123!", is_staff=True
+        )
+        self.user_gestor.groups.add(self.grupo_gestor)
+        Authenticator.objects.create(
+            user=self.user_gestor, type=Authenticator.Type.TOTP, data={"secret": "JBSWY3DPEHPK3PXP"}
+        )
+
+        self.superuser = User.objects.create_superuser(
+            username="admin.p3", email="admin.p3@empresa.com.br", password="ComplexPassword123!"
+        )
+        Authenticator.objects.create(
+            user=self.superuser, type=Authenticator.Type.TOTP, data={"secret": "JBSWY3DPEHPK3PXP"}
+        )
+
+        # Dados de apoio
+        self.loc = Localidade.objects.create(nome="Recife", codigo="PE-REC", cidade="Recife", estado="PE")
+        self.dept = Departamento.objects.create(nome="Segurança", sigla="SEC")
+        self.cargo = Cargo.objects.create(nome="Engenheiro", departamento=self.dept)
+        self.colab = Colaborador.objects.create(
+            nome_completo="Lucas Alvo",
+            matricula="SEC-0099",
+            email_corporativo="lucas@empresa.com.br",
+            departamento=self.dept,
+            cargo=self.cargo,
+            localidade=self.loc,
+            data_admissao="2026-01-01",
+        )
+        self.sis = Sistema.objects.create(
+            nome="GitLab Interno", tipo=Sistema.TipoSistema.SAAS, criticidade=Sistema.Criticidade.ALTA
+        )
+        self.vinculo = VinculoAcesso.objects.create(
+            colaborador=self.colab,
+            sistema=self.sis,
+            identificador_conta="lucas.git",
+            status=VinculoAcesso.StatusAcesso.ATIVO,
+        )
+        self.processo = ProcessoOffboarding.objects.create(
+            colaborador=self.colab,
+            responsavel_ti=self.user_gestor,
+            status=ProcessoOffboarding.StatusOffboarding.INICIADO,
+        )
+        self.item = ItemChecklistOffboarding.objects.create(
+            processo=self.processo,
+            vinculo_acesso=self.vinculo,
+            status=ItemChecklistOffboarding.StatusItem.PENDENTE,
+        )
+
+    def test_101_admin_somente_leitura_offboarding(self):
+        """10.1: ProcessoOffboarding e ItemChecklistOffboarding são somente leitura no Django Admin; Analista TI não tem change_*."""
+        # 1. Analista TI não tem as permissões de change_ no grupo
+        permissoes_analista = set(self.grupo_analista.permissions.values_list("codename", flat=True))
+        self.assertNotIn("change_processooffboarding", permissoes_analista)
+        self.assertNotIn("change_itemchecklistoffboarding", permissoes_analista)
+
+        # 2. Superuser recebe 403 ao tentar submeter POST de alteração no Admin
+        self.client.force_login(self.superuser)
+        url_proc = reverse("admin:governance_processooffboarding_change", args=[self.processo.pk])
+        resp_proc = self.client.post(url_proc, {"observacoes": "tentativa_edicao_proibida"})
+        self.assertEqual(resp_proc.status_code, 403)
+
+        url_item = reverse("admin:governance_itemchecklistoffboarding_change", args=[self.item.pk])
+        resp_item = self.client.post(url_item, {"observacao": "tentativa_edicao_proibida"})
+        self.assertEqual(resp_item.status_code, 403)
+
+        # 3. Em VinculoAcessoAdmin, campos de auditoria são readonly_fields
+        from apps.governance.admin import VinculoAcessoAdmin
+
+        vinculo_admin = VinculoAcessoAdmin(VinculoAcesso, admin.site)
+        readonly = vinculo_admin.get_readonly_fields(mock.MagicMock())
+        for campo in ("concedido_por", "revogado_por", "data_concessao", "data_revogacao"):
+            self.assertIn(campo, readonly)
+
+    def test_102_totp_sem_reuso_tolerancia_zero(self):
+        """10.2: MFA_TOTP_TOLERANCE padrão 0 rejeita reuso após a janela de 30s (+35s e +65s)."""
+        from allauth.mfa.totp.internal import auth as totp_auth
+
+        self.assertEqual(settings.MFA_TOTP_TOLERANCE, 0)
+
+        secret = totp_auth.generate_totp_secret()
+        t0 = 1700000000.0  # Unix timestamp de referência
+
+        with mock.patch("time.time", return_value=t0):
+            counters = list(totp_auth.yield_hotp_counters_from_time())
+            code = totp_auth.format_hotp_value(totp_auth.hotp_value(secret, counters[0]))
+            valido_t0 = totp_auth.validate_totp_code(secret, code)
+            self.assertTrue(valido_t0, "Código deve ser válido no momento da emissão (t0)")
+
+        with mock.patch("time.time", return_value=t0 + 35):
+            valido_t35 = totp_auth.validate_totp_code(secret, code)
+            self.assertFalse(valido_t35, "Código não deve ser aceito na janela seguinte (+35s) com tolerância 0")
+
+        with mock.patch("time.time", return_value=t0 + 65):
+            valido_t65 = totp_auth.validate_totp_code(secret, code)
+            self.assertFalse(valido_t65, "Código não deve ser aceito duas janelas depois (+65s)")
+
+    def test_103_cache_compartilhado_dbcache(self):
+        """10.3: Backend de cache padrão é DatabaseCache compartilhado, não LocMemCache ou DummyCache."""
+        backend = settings.CACHES["default"]["BACKEND"]
+        self.assertNotIn("LocMemCache", backend)
+        self.assertNotIn("DummyCache", backend)
+        self.assertIn("DatabaseCache", backend)
+
+    def test_104_rate_limit_por_ip_e_chave(self):
+        """10.4: Rate limit de login_failed protege tanto por IP quanto por conta (key)."""
+        import allauth.core.ratelimit as rl
+
+        cfg = settings.ACCOUNT_RATE_LIMITS.get("login_failed", "")
+        rates = rl._impl.parse_rates(cfg)
+        self.assertTrue(
+            any(r.per == "key" for r in rates), "ACCOUNT_RATE_LIMITS['login_failed'] deve conter limite por key"
+        )
+        self.assertTrue(
+            any(r.per == "ip" for r in rates), "ACCOUNT_RATE_LIMITS['login_failed'] deve conter limite por ip"
+        )
+
+    def test_105_mfa_exigido_por_permissao_efetiva(self):
+        """10.5: Usuário sem grupo mas com permissão de escrita direta é obrigado a cadastrar TOTP."""
+        from apps.governance.middleware import exige_mfa
+
+        user_direto = User.objects.create_user(
+            username="sem.grupo", email="sem.grupo@empresa.com.br", password="ComplexPassword123!"
+        )
+        # Inicialmente sem permissões de escrita -> não exige MFA
+        self.assertFalse(exige_mfa(user_direto))
+
+        # Adiciona permissão de escrita direta
+        perm = Permission.objects.get(codename="revogar_item_offboarding")
+        user_direto.user_permissions.add(perm)
+        user_direto = User.objects.get(pk=user_direto.pk)  # recarrega permissões
+
+        self.assertTrue(exige_mfa(user_direto))
+
+        # Ao acessar o sistema autenticado e sem TOTP, deve ser redirecionado para ativação de TOTP
+        self.client.force_login(user_direto)
+        resp = self.client.get("/")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn(reverse("mfa_activate_totp"), resp.headers["Location"])
+
+    def test_106_system_checks_bloqueiam_configuracoes_inseguras(self):
+        """10.6: System checks gatekeeper.E001-E004 barram regressões de segurança com DEBUG=False."""
+        from apps.governance.checks import run_gatekeeper_deploy_checks
+
+        # 1. Configuração padrão deve passar sem erros
+        with override_settings(DEBUG=False):
+            erros = run_gatekeeper_deploy_checks()
+            self.assertEqual(erros, [])
+
+        # 2. MFA_TOTP_TOLERANCE > 0 -> gatekeeper.E001
+        with override_settings(DEBUG=False, MFA_TOTP_TOLERANCE=1):
+            erros = run_gatekeeper_deploy_checks()
+            self.assertTrue(any(e.id == "gatekeeper.E001" for e in erros))
+
+        # 3. LocMemCache -> gatekeeper.E002
+        with override_settings(
+            DEBUG=False, CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+        ):
+            erros = run_gatekeeper_deploy_checks()
+            self.assertTrue(any(e.id == "gatekeeper.E002" for e in erros))
+
+        # 4. login_failed sem 'key' -> gatekeeper.E003
+        with override_settings(DEBUG=False, ACCOUNT_RATE_LIMITS={"login_failed": "10/m/ip"}):
+            erros = run_gatekeeper_deploy_checks()
+            self.assertTrue(any(e.id == "gatekeeper.E003" for e in erros))
+
+        # 5. MFA_TOTP_INSECURE_BYPASS_CODE ativo com DEBUG=False -> gatekeeper.E004
+        with override_settings(DEBUG=False, MFA_TOTP_INSECURE_BYPASS_CODE="000000"):
+            erros = run_gatekeeper_deploy_checks()
+            self.assertTrue(any(e.id == "gatekeeper.E004" for e in erros))
+
+    def test_111_compose_contem_servico_migrate_com_createcachetable(self):
+        """11.1: docker-compose.yml possui serviço migrate com createcachetable e web depende de sua conclusão."""
+        compose_path = Path(settings.BASE_DIR) / "docker-compose.yml"
+        self.assertTrue(compose_path.exists())
+        conteudo = compose_path.read_text(encoding="utf-8")
+
+        self.assertIn("migrate:", conteudo)
+        self.assertIn("python manage.py migrate --noinput && python manage.py createcachetable", conteudo)
+        self.assertIn("condition: service_completed_successfully", conteudo)
+
+    def test_112_caddyfile_sem_includesubdomains(self):
+        """11.2: Caddyfile não contém includeSubDomains no cabeçalho Strict-Transport-Security."""
+        caddy_path = Path(settings.BASE_DIR) / "Caddyfile"
+        self.assertTrue(caddy_path.exists())
+        conteudo = caddy_path.read_text(encoding="utf-8")
+
+        self.assertNotIn("includeSubDomains", conteudo)
+        self.assertIn('Strict-Transport-Security "max-age=31536000"', conteudo)
+
+    def test_113_script_backup_atomico_e_sem_senha_cli(self):
+        """11.3: scripts/backup_db.sh não passa DATABASE_URL ao pg_dump e utiliza arquivo .partial com trap."""
+        script_path = Path(settings.BASE_DIR) / "scripts" / "backup_db.sh"
+        self.assertTrue(script_path.exists())
+        conteudo = script_path.read_text(encoding="utf-8")
+
+        self.assertNotIn('pg_dump --format=custom "${DATABASE_URL}"', conteudo)
+        self.assertIn("pg_dump --format=custom", conteudo)
+        self.assertIn('PARTIAL_FILE="${FINAL_FILE}.partial"', conteudo)
+        self.assertIn("trap 'rm -f \"${PARTIAL_FILE}\"' EXIT", conteudo)
+        self.assertIn('mv "${PARTIAL_FILE}" "${FINAL_FILE}"', conteudo)
+
+    def test_114_csp_contem_base_uri_e_object_src_none(self):
+        """11.4: CSP possui diretivas base-uri 'none' e object-src 'none' em settings e nos headers."""
+        directives = settings.CONTENT_SECURITY_POLICY["DIRECTIVES"]
+        self.assertEqual(directives.get("base-uri"), ["'none'"])
+        self.assertEqual(directives.get("object-src"), ["'none'"])
+
+        resp = self.client.get("/login/")
+        csp_header = resp.headers.get("Content-Security-Policy", "")
+        self.assertIn("base-uri 'none'", csp_header)
+        self.assertIn("object-src 'none'", csp_header)
+
+    def test_121_servico_revogar_nao_aplicavel_exige_permissao(self):
+        """12.1: revogar_item_checklist levanta PermissionDenied se o responsável não tiver governance.marcar_nao_aplicavel."""
+        # Analista TI NÃO possui 'marcar_nao_aplicavel'
+        with self.assertRaises(PermissionDenied):
+            revogar_item_checklist(
+                item_id=self.item.pk,
+                responsavel=self.user_analista,
+                evidencia="",
+                observacao="Justificativa longa e detalhada com mais de 20 caracteres para teste",
+                status=ItemChecklistOffboarding.StatusItem.NAO_APLICAVEL,
+            )
+
+        # Gestor SecOps POSSUI 'marcar_nao_aplicavel' -> Deve executar com sucesso
+        item_atualizado, proc_atualizado = revogar_item_checklist(
+            item_id=self.item.pk,
+            responsavel=self.user_gestor,
+            evidencia="",
+            observacao="Justificativa longa e detalhada com mais de 20 caracteres para teste",
+            status=ItemChecklistOffboarding.StatusItem.NAO_APLICAVEL,
+        )
+        self.assertEqual(item_atualizado.status, ItemChecklistOffboarding.StatusItem.NAO_APLICAVEL)
+        self.assertEqual(item_atualizado.vinculo_acesso.status, VinculoAcesso.StatusAcesso.REVOGADO)
+
+    def test_122_log_falha_login_identifica_email(self):
+        """12.2: Tentativa de login malsucedida usando e-mail registra o e-mail nos logs de auditoria SOC."""
+        with self.assertLogs("gatekeeper.audit", level="WARNING") as cm:
+            user_login_failed.send(
+                sender=self.__class__,
+                credentials={"email": "alvo.investigado@empresa.com.br"},
+                request=None,
+            )
+        self.assertTrue(
+            any(
+                getattr(rec, "audit", {}).get("tentativa_usuario") == "alvo.investigado@empresa.com.br"
+                for rec in cm.records
+            ),
+            f"E-mail não encontrado nos records capturados: {[getattr(r, 'audit', {}) for r in cm.records]}",
+        )

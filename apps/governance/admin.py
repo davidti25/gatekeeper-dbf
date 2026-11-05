@@ -7,6 +7,7 @@ Integrado ao simple_history para rastreamento de versões e imutabilidade de reg
 """
 
 from django.contrib import admin
+from django.utils import timezone
 from django.utils.html import format_html
 from simple_history.admin import SimpleHistoryAdmin
 
@@ -160,10 +161,25 @@ class VinculoAcessoAdmin(SimpleHistoryAdmin):
     list_filter = ("status", "sistema", "colaborador__departamento")
     search_fields = ("colaborador__nome_completo", "identificador_conta", "sistema__nome", "justificativa")
     autocomplete_fields = ("colaborador",)
+    readonly_fields = ("concedido_por", "revogado_por", "data_concessao", "data_revogacao")
 
-    # Fase 1.1: Imutabilidade da trilha de auditoria
+    # Fase 1.1 / 10.1: Imutabilidade da trilha e não-repúdio do operador
     def has_delete_permission(self, request, obj=None):
         return False
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            if not obj.concedido_por:
+                obj.concedido_por = request.user
+            if not obj.data_concessao:
+                obj.data_concessao = timezone.now()
+        else:
+            if obj.status == VinculoAcesso.StatusAcesso.REVOGADO:
+                if not obj.revogado_por:
+                    obj.revogado_por = request.user
+                if not obj.data_revogacao:
+                    obj.data_revogacao = timezone.now()
+        super().save_model(request, obj, form, change)
 
     @admin.display(description="Status")
     def exibir_status(self, obj):
@@ -176,14 +192,30 @@ class VinculoAcessoAdmin(SimpleHistoryAdmin):
         return _badge(obj.get_status_display(), cor)
 
 
-class ItemChecklistOffboardingInline(admin.TabularInline):
+class SomenteLeituraAdminMixin:
+    """
+    Fase 10.1: Registros de offboarding só mudam pelo services.py (máquina de estados + travas + logs).
+    Bloqueia adições, alterações e exclusões via Django Admin para todos os usuários (inclusive superusuários).
+    """
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+class ItemChecklistOffboardingInline(SomenteLeituraAdminMixin, admin.TabularInline):
     model = ItemChecklistOffboarding
     extra = 0
     fields = ("vinculo_acesso", "status", "revogado", "data_revogacao", "responsavel_revogacao", "evidencia_revogacao")
 
 
 @admin.register(ProcessoOffboarding)
-class ProcessoOffboardingAdmin(SimpleHistoryAdmin):
+class ProcessoOffboardingAdmin(SomenteLeituraAdminMixin, SimpleHistoryAdmin):
     class Media:
         css = ADMIN_MEDIA_CSS
 
@@ -191,10 +223,6 @@ class ProcessoOffboardingAdmin(SimpleHistoryAdmin):
     list_filter = ("status", "responsavel_ti")
     search_fields = ("colaborador__nome_completo", "observacoes")
     inlines = [ItemChecklistOffboardingInline]
-
-    # Fase 1.1: Imutabilidade do processo de desligamento
-    def has_delete_permission(self, request, obj=None):
-        return False
 
     @admin.display(description="Progresso")
     def exibir_progresso(self, obj):
@@ -223,10 +251,7 @@ class ProcessoOffboardingAdmin(SimpleHistoryAdmin):
 
 
 @admin.register(ItemChecklistOffboarding)
-class ItemChecklistOffboardingAdmin(SimpleHistoryAdmin):
+class ItemChecklistOffboardingAdmin(SomenteLeituraAdminMixin, SimpleHistoryAdmin):
     list_display = ("processo", "vinculo_acesso", "status", "revogado", "data_revogacao", "responsavel_revogacao")
     list_filter = ("status", "revogado")
     search_fields = ("processo__colaborador__nome_completo", "vinculo_acesso__sistema__nome", "evidencia_revogacao")
-
-    def has_delete_permission(self, request, obj=None):
-        return False

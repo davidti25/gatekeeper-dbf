@@ -17,6 +17,29 @@ services:
     networks:
       - gatekeeper-net
 
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gatekeeper-migrate
+    command: ["sh", "-c", "python manage.py migrate --noinput && python manage.py createcachetable"]
+    environment: &web-env
+      DEBUG: "False"
+      SECRET_KEY: ${SECRET_KEY:?defina SECRET_KEY no .env}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      DATABASE_URL: postgres://${POSTGRES_USER:-gatekeeper}:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@db:5432/${POSTGRES_DB:-gatekeeper_db}
+      CACHE_URL: ${CACHE_URL:-dbcache://gatekeeper_cache}
+      TIME_ZONE: America/Bahia
+      ADMIN_URL: ${ADMIN_URL:-admin/}
+      TRUSTED_PROXY_COUNT: "1"
+      USE_X_FORWARDED_PROTO: "True"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - gatekeeper-net
+
   web:
     build:
       context: .
@@ -24,17 +47,9 @@ services:
     container_name: gatekeeper-web
     restart: unless-stopped
     depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      DEBUG: "False"
-      SECRET_KEY: ${SECRET_KEY:?defina SECRET_KEY no .env}
-      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
-      DATABASE_URL: postgres://${POSTGRES_USER:-gatekeeper}:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@db:5432/${POSTGRES_DB:-gatekeeper_db}
-      TIME_ZONE: America/Bahia
-      ADMIN_URL: ${ADMIN_URL:-admin/}
-      TRUSTED_PROXY_COUNT: "1"
-      USE_X_FORWARDED_PROTO: "True"
+      migrate:
+        condition: service_completed_successfully
+    environment: *web-env
     expose:
       - "8000"
     networks:

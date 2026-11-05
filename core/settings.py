@@ -99,12 +99,14 @@ ACCOUNT_SIGNUP_FIELDS = ["email*", "username*", "password1*", "password2*"]
 ACCOUNT_EMAIL_VERIFICATION = "none"
 ACCOUNT_LOGOUT_ON_GET = False
 ACCOUNT_RATE_LIMITS = {
-    "login_failed": "5/5m",  # Mitigação contra Força Bruta (MITRE ATT&CK T1110)
+    # Por IP (rajadas) e por conta (ataque distribuído contra um mesmo usuário) — MITRE T1110 (Fase 10.4)
+    "login_failed": "10/m/ip,5/5m/key",
 }
 MFA_SUPPORTED_TYPES = ["totp", "recovery_codes"]
 MFA_TOTP_ISSUER = "GateKeeper-DBF"
-# Tolerância de tempo para TOTP: 2 passos (±60s) mitiga pequenas diferenças de relógio entre cliente e servidor (RFC 6238)
-MFA_TOTP_TOLERANCE = env.int("MFA_TOTP_TOLERANCE", default=2)
+# Tolerância zero por padrão para eliminar janela de reuso de código TOTP (Fase 10.2).
+# Em desenvolvimento com relógio fora de sincronia, configure via .env (MFA_TOTP_TOLERANCE=2).
+MFA_TOTP_TOLERANCE = env.int("MFA_TOTP_TOLERANCE", default=0)
 # Formulário customizado para manter o segredo e QR Code estáveis na sessão durante a ativação
 MFA_FORMS = {
     "activate_totp": "apps.governance.forms.GateKeeperActivateTOTPForm",
@@ -112,6 +114,11 @@ MFA_FORMS = {
 # Bypass de TOTP exclusivo para ambiente de desenvolvimento / testes caso o relógio local esteja fora de sincronia
 if DEBUG:
     MFA_TOTP_INSECURE_BYPASS_CODE = env("MFA_TOTP_INSECURE_BYPASS_CODE", default=None)
+
+# Cache compartilhado entre workers (Fase 10.3 / 11.1)
+CACHES = {
+    "default": env.cache("CACHE_URL", default="dbcache://gatekeeper_cache"),
+}
 
 ROOT_URLCONF = "core.urls"
 
@@ -249,6 +256,8 @@ CONTENT_SECURITY_POLICY = {
         "connect-src": ["'self'"],
         "frame-ancestors": ["'none'"],
         "form-action": ["'self'"],
+        "base-uri": ["'none'"],
+        "object-src": ["'none'"],
     }
 }
 

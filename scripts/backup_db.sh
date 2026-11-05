@@ -24,26 +24,37 @@ mkdir -p "${BACKUP_DIR}"
 chmod 700 "${BACKUP_DIR}"
 
 FINAL_FILE="${BACKUP_DIR}/gatekeeper_${TIMESTAMP}.dump.age"
+PARTIAL_FILE="${FINAL_FILE}.partial"
+trap 'rm -f "${PARTIAL_FILE}"' EXIT
 
 echo "[+] [$(date)] Iniciando rotina de backup criptografado do GateKeeper-DBF..."
 
 # 3. Execução em Pipe sem arquivos intermediários em texto claro no disco
 # As credenciais do Postgres NUNCA devem ser passadas via argumento de CLI (visíveis no ps).
-# Utilize PGHOST, PGUSER, PGDATABASE, PGPASSWORD ou ~/.pgpass.
-if [[ -n "${DATABASE_URL:-}" && "${DATABASE_URL}" == postgres* ]]; then
-    echo "    • Modo: PostgreSQL (dump custom compactado em pipe com criptografia age)"
-    pg_dump --format=custom "${DATABASE_URL}" | age -r "${BACKUP_AGE_RECIPIENT}" > "${FINAL_FILE}"
+# Falha-se explicitamente se DATABASE_URL estiver presente para mitigar vazamento de credenciais.
+if [[ -n "${DATABASE_URL:-}" ]]; then
+    echo "[-] ERRO DE SEGURANÇA: DATABASE_URL não deve ser utilizada diretamente no backup para evitar exposição de credenciais em processos (ps)." >&2
+    echo "    Configure as variáveis padrão libpq (PGHOST, PGUSER, PGDATABASE, PGPORT) e utilize ~/.pgpass (permissão 600) ou PGPASSWORD." >&2
+    exit 1
+fi
+
+if [[ -n "${PGDATABASE:-}" || -n "${PGHOST:-}" ]]; then
+    echo "    • Modo: PostgreSQL (dump custom compactado em pipe com criptografia age via libpq/pgpass)"
+    pg_dump --format=custom | age -r "${BACKUP_AGE_RECIPIENT}" > "${PARTIAL_FILE}"
 elif [[ -f "db.sqlite3" ]]; then
     echo "    • Modo: SQLite (dump em pipe com criptografia age)"
     if command -v sqlite3 >/dev/null 2>&1; then
-        sqlite3 db.sqlite3 ".dump" | age -r "${BACKUP_AGE_RECIPIENT}" > "${FINAL_FILE}"
+        sqlite3 db.sqlite3 ".dump" | age -r "${BACKUP_AGE_RECIPIENT}" > "${PARTIAL_FILE}"
     else
-        cat db.sqlite3 | age -r "${BACKUP_AGE_RECIPIENT}" > "${FINAL_FILE}"
+        cat db.sqlite3 | age -r "${BACKUP_AGE_RECIPIENT}" > "${PARTIAL_FILE}"
     fi
 else
     echo "[-] ERRO: Nenhuma base de dados encontrada para backup." >&2
     exit 1
 fi
+
+# Move atomicamente o arquivo temporário apenas após sucesso completo do pipe
+mv "${PARTIAL_FILE}" "${FINAL_FILE}"
 
 # 4. Permissões estritas no arquivo gerado (apenas leitura do dono)
 chmod 600 "${FINAL_FILE}"

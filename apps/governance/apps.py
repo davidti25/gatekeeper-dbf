@@ -7,4 +7,5 @@ class GovernanceConfig(AppConfig):
     verbose_name = "Governança de Acessos & Identidades"
 
     def ready(self):
+        import apps.governance.checks  # noqa: F401
         import apps.governance.signals  # noqa: F401

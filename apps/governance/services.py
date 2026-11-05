@@ -10,7 +10,7 @@ Contempla:
 
 import logging
 
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.utils import timezone
 
@@ -148,8 +148,12 @@ def revogar_item_checklist(
 
     agora = timezone.now()
 
-    # 3. Regra de Negócio: Não Aplicável exige justificativa detalhada (Fase 6.2)
+    # 3. Regra de Negócio: Não Aplicável exige permissão e justificativa detalhada (Fase 6.2 e 12.1)
     if status == ItemChecklistOffboarding.StatusItem.NAO_APLICAVEL:
+        if not responsavel.has_perm("governance.marcar_nao_aplicavel"):
+            raise PermissionDenied(
+                "Apenas o Gestor SecOps possui autorização para marcar um acesso como Não Aplicável."
+            )
         justificativa = (observacao or "").strip()
         if len(justificativa) < 20:
             raise ValidationError(

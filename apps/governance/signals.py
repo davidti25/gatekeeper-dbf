@@ -33,8 +33,11 @@ def log_user_logout(sender, request, user, **kwargs):
 @receiver(user_login_failed)
 def log_user_login_failed(sender, credentials, request, **kwargs):
     ip = get_client_ip(request)
-    username = credentials.get("username", "DESCONHECIDO") if credentials else "DESCONHECIDO"
+    tentativa = ""
+    if credentials:
+        tentativa = credentials.get("username") or credentials.get("email") or credentials.get("login") or ""
+    tentativa = (tentativa or "DESCONHECIDO")[:150]
     logger.warning(
         "AUTH_LOGIN_FAILED [MITRE T1110]",
-        extra={"audit": {"tentativa_usuario": username, "ip": ip}},
+        extra={"audit": {"tentativa_usuario": tentativa, "ip": ip}},
     )
