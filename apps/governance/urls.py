@@ -26,3 +26,4 @@ urlpatterns = [
     path('offboarding/<int:pk>/revogar/<int:item_id>/', views.revogar_item_offboarding_view, name='revogar_item_offboarding'),
     path('offboarding/<int:pk>/relatorio/', views.OffboardingRelatorioView.as_view(), name='offboarding_relatorio'),
 ]
+

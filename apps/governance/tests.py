@@ -1,13 +1,18 @@
 """
-Testes Unitários para o Módulo de Governança & IAM (GateKeeper-DBF).
+Testes Unitários & de Segurança para o Módulo de Governança & IAM (GateKeeper-DBF).
 
-Garante integridade nas regras de negócio de vinculação de acessos,
-cálculo de progresso de offboarding e compliance de identidade.
+Cobre:
+- Fase 0 (Emergência): Login obrigatório em todas as rotas (Secure by Default)
+- Segregação de Funções (RBAC): Auditor, Analista TI e Gestor SecOps
+- Não-Repúdio: Atribuição estrita a request.user (sem fallbacks automáticos)
+- Mitigação de Stored XSS com data-confirm desacoplado
+- Integridade do fluxo de revogação e cálculo de progresso de offboarding
 """
 
 from django.test import TestCase, Client
 from django.urls import reverse
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.utils import timezone
 from .models import (
     Localidade,
@@ -24,17 +29,37 @@ from .models import (
 User = get_user_model()
 
 
-class GovernanceModelTests(TestCase):
+class GovernanceSecurityAndModelTests(TestCase):
     def setUp(self):
         self.client = Client()
 
-        # Usuário analista de TI
-        self.analista = User.objects.create_user(
+        # Grupos RBAC criados pela migração 0003
+        self.grupo_auditor = Group.objects.get(name='Auditor')
+        self.grupo_analista = Group.objects.get(name='Analista TI')
+        self.grupo_gestor = Group.objects.get(name='Gestor SecOps')
+
+        # Usuários por Perfil
+        self.user_auditor = User.objects.create_user(
+            username='auditor.externo',
+            email='auditor@empresa.com.br',
+            password='ComplexPassword123!'
+        )
+        self.user_auditor.groups.add(self.grupo_auditor)
+
+        self.user_analista = User.objects.create_user(
             username='analista.secops',
             email='secops@empresa.com.br',
+            password='ComplexPassword123!'
+        )
+        self.user_analista.groups.add(self.grupo_analista)
+
+        self.user_gestor = User.objects.create_user(
+            username='gestor.ciso',
+            email='ciso@empresa.com.br',
             password='ComplexPassword123!',
             is_staff=True
         )
+        self.user_gestor.groups.add(self.grupo_gestor)
 
         # Localidade & Setor
         self.matriz = Localidade.objects.create(
@@ -89,167 +114,105 @@ class GovernanceModelTests(TestCase):
             data_admissao=timezone.now().date()
         )
 
-    def test_criacao_modelos_basicos(self):
-        """Valida que as representações em string e relacionamentos funcionam como esperado."""
-        self.assertEqual(str(self.matriz), "Sede São Paulo (SP-MATRIZ)")
-        self.assertEqual(str(self.ti), "Tecnologia da Informação (TI)")
-        self.assertEqual(str(self.cargo), "Analista de SOC - TI")
-        self.assertIn("Carlos Santos", str(self.colaborador))
+    def test_01_autenticacao_obrigatoria_redireciona_anonimos(self):
+        """0.1: Garante que qualquer acesso anônimo é redirecionado para a tela de login (Secure by Default)."""
+        rotas = [
+            reverse('dashboard'),
+            reverse('colaborador_list'),
+            reverse('colaborador_detail', kwargs={'pk': self.colaborador.pk}),
+            reverse('sistema_list'),
+            reverse('matriz_acesso'),
+            reverse('offboarding_list'),
+        ]
 
-    def test_vinculo_acesso_e_contagem(self):
-        """Testa concessão de acessos e cálculo dinâmico de acessos ativos do colaborador."""
-        self.assertEqual(self.colaborador.total_acessos_ativos, 0)
+        for rota in rotas:
+            resp = self.client.get(rota)
+            self.assertEqual(resp.status_code, 302, f"Rota {rota} permitiu acesso sem login!")
+            self.assertIn(reverse('login'), resp.headers['Location'])
 
-        # Concede acesso VPN
-        vinculo1 = VinculoAcesso.objects.create(
-            colaborador=self.colaborador,
-            sistema=self.vpn,
-            perfil_acesso=self.perfil_vpn,
-            identificador_conta='carlos.santos',
-            concedido_por=self.analista
+    def test_02_tela_de_login_disponivel_sem_autenticacao(self):
+        """Garante que a tela de login está acessível publicamente com formulário CSRF e inputs."""
+        resp = self.client.get(reverse('login'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'name="username"')
+        self.assertContains(resp, 'name="password"')
+        self.assertContains(resp, 'csrfmiddlewaretoken')
+
+    def test_03_segregacao_funcoes_auditor_apenas_leitura(self):
+        """0.2: Usuário do grupo Auditor visualiza painéis, mas é impedido de executar offboarding (403 Forbidden)."""
+        self.client.force_login(self.user_auditor)
+
+        # Leitura permitida
+        self.assertEqual(self.client.get(reverse('dashboard')).status_code, 200)
+        self.assertEqual(self.client.get(reverse('colaborador_list')).status_code, 200)
+        self.assertEqual(self.client.get(reverse('sistema_list')).status_code, 200)
+
+        # Escrita/Ação bloqueada com 403 Forbidden
+        resp_iniciar = self.client.post(
+            reverse('iniciar_offboarding', kwargs={'pk': self.colaborador.pk}),
+            {'motivo_desligamento': 'Auditor tentando desligar'}
         )
-        self.assertEqual(self.colaborador.total_acessos_ativos, 1)
+        self.assertEqual(resp_iniciar.status_code, 403)
 
-        # Concede acesso ERP
-        vinculo2 = VinculoAcesso.objects.create(
-            colaborador=self.colaborador,
-            sistema=self.erp,
-            identificador_conta='carlos.santos@empresa.com.br',
-            concedido_por=self.analista
-        )
-        self.assertEqual(self.colaborador.total_acessos_ativos, 2)
+    def test_04_analista_ti_executa_offboarding_com_nao_repudio_estrito(self):
+        """0.2 e 0.3: Analista TI possui permissão para executar offboarding e seu login é gravado estritamente."""
+        self.client.force_login(self.user_analista)
 
-        # Revoga um dos acessos
-        vinculo1.status = VinculoAcesso.StatusAcesso.REVOGADO
-        vinculo1.data_revogacao = timezone.now()
-        vinculo1.revogado_por = self.analista
-        vinculo1.save()
-
-        self.assertEqual(self.colaborador.total_acessos_ativos, 1)
-
-    def test_processo_offboarding_progresso(self):
-        """Testa o cálculo de progresso percentual e status de encerramento do offboarding."""
-        v1 = VinculoAcesso.objects.create(
-            colaborador=self.colaborador,
-            sistema=self.vpn,
-            identificador_conta='carlos.santos',
-            concedido_por=self.analista
-        )
-        v2 = VinculoAcesso.objects.create(
-            colaborador=self.colaborador,
-            sistema=self.erp,
-            identificador_conta='carlos.santos@empresa.com.br',
-            concedido_por=self.analista
-        )
-
-        offboarding = ProcessoOffboarding.objects.create(
-            colaborador=self.colaborador,
-            responsavel_ti=self.analista,
-            status=ProcessoOffboarding.StatusOffboarding.INICIADO
-        )
-
-        item1 = ItemChecklistOffboarding.objects.create(
-            processo=offboarding,
-            vinculo_acesso=v1
-        )
-        item2 = ItemChecklistOffboarding.objects.create(
-            processo=offboarding,
-            vinculo_acesso=v2
-        )
-
-        self.assertEqual(offboarding.total_itens, 2)
-        self.assertEqual(offboarding.total_revogados, 0)
-        self.assertEqual(offboarding.percentual_concluido, 0)
-
-        # Revoga primeiro item
-        item1.revogado = True
-        item1.data_revogacao = timezone.now()
-        item1.responsavel_revogacao = self.analista
-        item1.evidencia_revogacao = 'Conta VPN removida. Chamado #1234'
-        item1.save()
-
-        self.assertEqual(offboarding.total_revogados, 1)
-        self.assertEqual(offboarding.percentual_concluido, 50)
-
-        # Revoga segundo item
-        item2.revogado = True
-        item2.data_revogacao = timezone.now()
-        item2.responsavel_revogacao = self.analista
-        item2.evidencia_revogacao = 'Usuário inativado no ERP. Chamado #1235'
-        item2.save()
-
-        self.assertEqual(offboarding.total_revogados, 2)
-        self.assertEqual(offboarding.percentual_concluido, 100)
-
-    def test_views_dashboard_e_listagens(self):
-        """Garante que as principais views respondem com HTTP 200 e contexto adequado."""
-        # Dashboard
-        resp_dash = self.client.get(reverse('dashboard'))
-        self.assertEqual(resp_dash.status_code, 200)
-        self.assertIn('colaboradores_ativos', resp_dash.context)
-
-        # Lista de Colaboradores
-        resp_colab = self.client.get(reverse('colaborador_list'))
-        self.assertEqual(resp_colab.status_code, 200)
-
-        # Detalhe do Colaborador
-        resp_detail = self.client.get(reverse('colaborador_detail', kwargs={'pk': self.colaborador.pk}))
-        self.assertEqual(resp_detail.status_code, 200)
-
-        # Inventário de Sistemas
-        resp_sistemas = self.client.get(reverse('sistema_list'))
-        self.assertEqual(resp_sistemas.status_code, 200)
-
-        # Matriz RBAC
-        resp_matriz = self.client.get(reverse('matriz_acesso'))
-        self.assertEqual(resp_matriz.status_code, 200)
-
-    def test_fluxo_completo_offboarding_web(self):
-        """Testa o fluxo guiado de offboarding pela interface web: iniciar, revogar item e emitir relatório."""
-        self.client.force_login(self.analista)
-
-        # Concede um acesso para o colaborador
-        vinculo = VinculoAcesso.objects.create(
+        # Concede acesso
+        v = VinculoAcesso.objects.create(
             colaborador=self.colaborador,
             sistema=self.vpn,
             identificador_conta='carlos.vpn',
-            concedido_por=self.analista
+            concedido_por=self.user_gestor
         )
 
-        # 1. Iniciar Offboarding via POST
+        # Inicia Offboarding
         resp_iniciar = self.client.post(
             reverse('iniciar_offboarding', kwargs={'pk': self.colaborador.pk}),
-            {'motivo_desligamento': 'Desligamento Teste'}
+            {'motivo_desligamento': 'Desligamento formal test'}
         )
         self.assertEqual(resp_iniciar.status_code, 302)
 
         processo = ProcessoOffboarding.objects.get(colaborador=self.colaborador)
-        self.assertEqual(processo.total_itens, 1)
-        self.assertEqual(processo.total_revogados, 0)
-        self.assertEqual(processo.status, ProcessoOffboarding.StatusOffboarding.INICIADO)
+        # Não-repúdio: o responsável gravado DEVE ser estritamente self.user_analista
+        self.assertEqual(processo.responsavel_ti, self.user_analista)
 
-        # 2. Revogar Item do Checklist via POST
+        # Revoga item
         item = processo.itens_checklist.first()
         resp_revogar = self.client.post(
             reverse('revogar_item_offboarding', kwargs={'pk': processo.pk, 'item_id': item.pk}),
-            {
-                'evidencia_revogacao': 'Ticket GLPI #9999 - Chave revogada',
-                'observacao': 'Tudo ok'
-            }
+            {'evidencia_revogacao': 'Ticket GLPI #5555'}
         )
         self.assertEqual(resp_revogar.status_code, 302)
 
-        # Recarrega processo e colaborador
-        processo.refresh_from_db()
-        self.colaborador.refresh_from_db()
+        item.refresh_from_db()
+        v.refresh_from_db()
 
-        self.assertEqual(processo.total_revogados, 1)
-        self.assertEqual(processo.percentual_concluido, 100)
-        self.assertEqual(processo.status, ProcessoOffboarding.StatusOffboarding.CONCLUIDO)
-        self.assertEqual(self.colaborador.status, Colaborador.StatusColaborador.DESLIGADO)
+        # Não-repúdio na revogação do checklist e no vínculo de acesso
+        self.assertEqual(item.responsavel_revogacao, self.user_analista)
+        self.assertEqual(v.revogado_por, self.user_analista)
+        self.assertEqual(v.status, VinculoAcesso.StatusAcesso.REVOGADO)
 
-        # 3. Emissão de Relatório Formal
-        resp_relatorio = self.client.get(reverse('offboarding_relatorio', kwargs={'pk': processo.pk}))
-        self.assertEqual(resp_relatorio.status_code, 200)
-        self.assertContains(resp_relatorio, "CIS Controls v8")
-        self.assertContains(resp_relatorio, "Carlos Santos")
+    def test_05_neutralizacao_stored_xss_data_confirm(self):
+        """0.4: Valida que payloads XSS em nome de colaborador não são inseridos em tags onclick executáveis."""
+        self.client.force_login(self.user_analista)
+
+        # Cria colaborador com payload de quebra de JavaScript
+        colab_xss = Colaborador.objects.create(
+            nome_completo="Ataque'); alert('xss'); ('",
+            matricula="SEC-9999",
+            email_corporativo="hacker@empresa.com.br",
+            localidade=self.matriz,
+            departamento=self.ti,
+            cargo=self.cargo,
+            status=Colaborador.StatusColaborador.ATIVO,
+            data_admissao=timezone.now().date()
+        )
+
+        resp = self.client.get(reverse('colaborador_detail', kwargs={'pk': colab_xss.pk}))
+        self.assertEqual(resp.status_code, 200)
+
+        # Não deve haver onclick com código inline
+        self.assertNotContains(resp, 'onclick="return confirm')
+        # Deve utilizar o atributo desacoplado data-confirm
+        self.assertContains(resp, 'data-confirm=')

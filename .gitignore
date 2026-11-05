@@ -8,6 +8,8 @@
 docs/privado/
 docs/sigiloso/
 docs/levantamentos_reais/
+# Planos de ação internos (achados de segurança ainda não corrigidos)
+docs/action-plan/
 *.xlsx
 *.xls
 *.csv

@@ -100,7 +100,7 @@
                     <form method="post" action="{% url 'iniciar_offboarding' colaborador.pk %}">
                         {% csrf_token %}
                         <input type="hidden" name="motivo_desligamento" value="Desligamento Formal Solicitado">
-                        <button type="submit" onclick="return confirm('Deseja iniciar o processo formal de desligamento para {{ colaborador.nome_completo }}?');" class="w-full mt-1 px-3 py-2 rounded-lg text-xs font-semibold bg-rose-600/90 hover:bg-rose-500 text-white transition flex items-center justify-center space-x-1.5 shadow-md shadow-rose-600/20">
+                        <button type="submit" data-confirm="Deseja iniciar o processo formal de desligamento para {{ colaborador.nome_completo }}?" class="w-full mt-1 px-3 py-2 rounded-lg text-xs font-semibold bg-rose-600/90 hover:bg-rose-500 text-white transition flex items-center justify-center space-x-1.5 shadow-md shadow-rose-600/20">
                             <i data-lucide="user-minus" class="w-3.5 h-3.5"></i>
                             <span>Iniciar Offboarding Seguro</span>
                         </button>
@@ -220,3 +220,4 @@
 
 </div>
 {% endblock %}
+

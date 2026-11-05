@@ -1,3 +1,4 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="pt-BR" class="h-full bg-slate-950 text-slate-100">
 <head>
@@ -106,12 +107,38 @@
                     </a>
                 </nav>
 
-                <!-- Actions / Admin Button -->
+                <!-- User Profile & Actions -->
                 <div class="flex items-center space-x-3">
-                    <a href="/admin/" target="_blank" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 flex items-center space-x-1.5 transition-all">
-                        <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-amber-400"></i>
-                        <span>Django Admin</span>
-                    </a>
+                    {% if user.is_authenticated %}
+                        <div class="hidden sm:flex items-center space-x-2 px-2.5 py-1 rounded-lg bg-slate-800/80 border border-slate-700/80 text-xs">
+                            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                            <span class="text-white font-medium font-mono">{{ user.username }}</span>
+                            {% if user.is_superuser %}
+                                <span class="px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 font-mono text-[10px]">Superuser</span>
+                            {% elif user.groups.first %}
+                                <span class="px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-300 font-mono text-[10px]">{{ user.groups.first.name }}</span>
+                            {% endif %}
+                        </div>
+
+                        {% if user.is_staff %}
+                        <a href="/admin/" target="_blank" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 flex items-center space-x-1.5 transition-all">
+                            <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-amber-400"></i>
+                            <span>Admin</span>
+                        </a>
+                        {% endif %}
+
+                        <form method="post" action="{% url 'logout' %}" class="inline">
+                            {% csrf_token %}
+                            <button type="submit" class="p-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition" title="Encerrar Sessão">
+                                <i data-lucide="log-out" class="w-4 h-4"></i>
+                            </button>
+                        </form>
+                    {% else %}
+                        <a href="{% url 'login' %}" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white transition flex items-center space-x-1.5">
+                            <i data-lucide="log-in" class="w-3.5 h-3.5"></i>
+                            <span>Entrar</span>
+                        </a>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -161,10 +188,12 @@
         </div>
     </footer>
 
-    <!-- Initialize Lucide Icons -->
+    <!-- Scripts Estáticos Globais -->
+    <script src="{% static 'js/app.js' %}"></script>
     <script>
         lucide.createIcons();
     </script>
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>
+

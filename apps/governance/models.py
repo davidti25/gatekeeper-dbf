@@ -319,6 +319,10 @@ class ProcessoOffboarding(models.Model):
         verbose_name = "Processo de Offboarding"
         verbose_name_plural = "Processos de Offboarding"
         ordering = ['-iniciado_em']
+        permissions = [
+            ("iniciar_offboarding", "Pode iniciar processo de offboarding"),
+            ("revogar_item_offboarding", "Pode revogar item do checklist de offboarding"),
+        ]
 
     def __str__(self):
         return f"Offboarding: {self.colaborador.nome_completo} [{self.get_status_display()}]"

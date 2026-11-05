@@ -45,3 +45,4 @@
 1. Desenvolvimento de scripts/sidecars de integração automatizada (ex: script Python para integração direta via API de desativação no Google Workspace ou script SSH para bloqueio automático no MikroTik RouterOS).
 2. Exportação de dados da Matriz RBAC para CSV/Excel com sanitização.
 3. Configuração de alertas e logs de auditoria para integração com SIEM (Wazuh / Syslog).
+

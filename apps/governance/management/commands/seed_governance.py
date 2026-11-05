@@ -18,6 +18,7 @@ from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from datetime import timedelta, date
+from django.conf import settings
 from apps.governance.models import (
     Localidade,
     Departamento,
@@ -37,19 +38,23 @@ class Command(BaseCommand):
     help = "Popula o banco de dados com a estrutura completa e dados de demonstração para Governança e Offboarding."
 
     def handle(self, *args, **options):
+        # Proteção DevSecOps: Bloqueio estrito em produção
+        if not settings.DEBUG:
+            self.stderr.write(self.style.ERROR("❌ ERRO DE SEGURANÇA: seed_governance é exclusivo para ambientes de desenvolvimento (DEBUG=True)."))
+            return
+
         self.stdout.write(self.style.NOTICE("Iniciando carga de dados base de Governança & IAM..."))
 
-        # 0. Usuário Administrador de SecOps
-        admin_user, _ = User.objects.get_or_create(
-            username="admin.secops",
-            defaults={
-                "email": "secops@empresa.com.br",
-                "is_staff": True,
-                "is_superuser": True,
-            }
-        )
-        if not admin_user.has_usable_password():
-            admin_user.set_password("AdminSecOps2026!")
+        # 0. Resolução de Usuário Técnico para Vínculos (Sem credenciais estáticas)
+        admin_user = User.objects.filter(is_superuser=True).first() or User.objects.first()
+        if not admin_user:
+            admin_user = User.objects.create(
+                username="sistema.automacao",
+                email="automacao@gatekeeper.local",
+                is_staff=False,
+                is_active=False  # Conta desativada e sem senha (impossível efetuar login)
+            )
+            admin_user.set_unusable_password()
             admin_user.save()
 
         # 1. Localidades

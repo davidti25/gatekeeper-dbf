@@ -6,10 +6,13 @@ Contempla:
 - Gestão de Colaboradores e Inventário de Sistemas
 - Matriz RBAC de Acessos Concedidos
 - Central Guiada de Offboarding & Checklist com Auditoria (CIS 5.5 / LGPD)
+- Segregação de Funções e RBAC Nativo (Fase 0 - Emergência)
 """
 
 from django.shortcuts import render, get_object_or_404, redirect
 from django.views.generic import TemplateView, ListView, DetailView
+from django.contrib.auth.mixins import PermissionRequiredMixin
+from django.contrib.auth.decorators import permission_required
 from django.contrib import messages
 from django.utils import timezone
 from django.db.models import Count, Q
@@ -29,6 +32,9 @@ User = get_user_model()
 
 
 class DashboardView(TemplateView):
+    """
+    Dashboard Executivo acessível para todos os perfis autorizados (Auditor, Analista TI, Gestor SecOps).
+    """
     template_name = 'governance/dashboard.html'
 
     def get_context_data(self, **kwargs):
@@ -79,10 +85,11 @@ class DashboardView(TemplateView):
         return context
 
 
-class ColaboradorListView(ListView):
+class ColaboradorListView(PermissionRequiredMixin, ListView):
     model = Colaborador
     template_name = 'governance/colaborador_list.html'
     context_object_name = 'colaboradores'
+    permission_required = 'governance.view_colaborador'
     paginate_by = 15
 
     def get_queryset(self):
@@ -114,10 +121,11 @@ class ColaboradorListView(ListView):
         return context
 
 
-class ColaboradorDetailView(DetailView):
+class ColaboradorDetailView(PermissionRequiredMixin, DetailView):
     model = Colaborador
     template_name = 'governance/colaborador_detail.html'
     context_object_name = 'colaborador'
+    permission_required = 'governance.view_colaborador'
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -132,10 +140,12 @@ class ColaboradorDetailView(DetailView):
         return context
 
 
+@permission_required('governance.iniciar_offboarding', raise_exception=True)
 def iniciar_offboarding_view(request, pk):
     """
     Inicia o fluxo formal de offboarding para um colaborador.
-    Gera automaticamente as pendências no checklist para cada acesso ativo.
+    Exige permissão estrita 'governance.iniciar_offboarding' (Analista TI / Gestor SecOps).
+    Garante não-repúdio absoluto: o responsável é estritamente request.user.
     """
     if request.method != 'POST':
         return redirect('colaborador_detail', pk=pk)
@@ -147,16 +157,8 @@ def iniciar_offboarding_view(request, pk):
         messages.warning(request, f"O colaborador {colaborador.nome_completo} já possui um processo de offboarding em andamento.")
         return redirect('offboarding_detail', pk=colaborador.processo_offboarding.pk)
 
-    # Identifica o responsável técnico pela execução (ou fallback para primeiro admin)
-    responsavel = request.user if request.user.is_authenticated else User.objects.filter(is_staff=True).first()
-    if not responsavel:
-        responsavel = User.objects.first()
-        if not responsavel:
-            responsavel = User.objects.create_user(
-                username='analista.secops',
-                email='secops@empresa.com.br',
-                is_staff=True
-            )
+    # Não-repúdio: operador estrito logado
+    responsavel = request.user
 
     # Cria o processo formal
     processo = ProcessoOffboarding.objects.create(
@@ -189,10 +191,11 @@ def iniciar_offboarding_view(request, pk):
     return redirect('offboarding_detail', pk=processo.pk)
 
 
-class OffboardingListView(ListView):
+class OffboardingListView(PermissionRequiredMixin, ListView):
     model = ProcessoOffboarding
     template_name = 'governance/offboarding_list.html'
     context_object_name = 'processos'
+    permission_required = 'governance.view_processooffboarding'
     paginate_by = 15
 
     def get_queryset(self):
@@ -211,10 +214,11 @@ class OffboardingListView(ListView):
         return context
 
 
-class OffboardingDetailView(DetailView):
+class OffboardingDetailView(PermissionRequiredMixin, DetailView):
     model = ProcessoOffboarding
     template_name = 'governance/offboarding_detail.html'
     context_object_name = 'processo'
+    permission_required = 'governance.view_processooffboarding'
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -227,10 +231,13 @@ class OffboardingDetailView(DetailView):
         return context
 
 
+@permission_required('governance.revogar_item_offboarding', raise_exception=True)
 def revogar_item_offboarding_view(request, pk, item_id):
     """
     Executa a revogação de um item específico do checklist de offboarding,
-    registrando a evidência (ticket/chamado/log) e atualizando o status do vínculo.
+    registrando a evidência e atualizando o status do vínculo.
+    Exige permissão estrita 'governance.revogar_item_offboarding'.
+    Garante não-repúdio absoluto: responsavel = request.user.
     """
     if request.method != 'POST':
         return redirect('offboarding_detail', pk=pk)
@@ -238,7 +245,8 @@ def revogar_item_offboarding_view(request, pk, item_id):
     processo = get_object_or_404(ProcessoOffboarding, pk=pk)
     item = get_object_or_404(ItemChecklistOffboarding, pk=item_id, processo=processo)
 
-    responsavel = request.user if request.user.is_authenticated else processo.responsavel_ti
+    # Não-repúdio: o executor é estritamente request.user
+    responsavel = request.user
     evidencia = request.POST.get('evidencia_revogacao', '').strip()
     observacao = request.POST.get('observacao', '').strip()
 
@@ -279,7 +287,7 @@ def revogar_item_offboarding_view(request, pk, item_id):
     return redirect('offboarding_detail', pk=pk)
 
 
-class OffboardingRelatorioView(DetailView):
+class OffboardingRelatorioView(PermissionRequiredMixin, DetailView):
     """
     Gera o Relatório Formal de Encerramento de Acessos para Auditoria e Compliance.
     Alinhado a CIS Controls v8 (Requisito 5.5) e LGPD Art. 46.
@@ -287,6 +295,7 @@ class OffboardingRelatorioView(DetailView):
     model = ProcessoOffboarding
     template_name = 'governance/offboarding_relatorio.html'
     context_object_name = 'processo'
+    permission_required = 'governance.view_processooffboarding'
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -299,10 +308,11 @@ class OffboardingRelatorioView(DetailView):
         return context
 
 
-class SistemaListView(ListView):
+class SistemaListView(PermissionRequiredMixin, ListView):
     model = Sistema
     template_name = 'governance/sistema_list.html'
     context_object_name = 'sistemas'
+    permission_required = 'governance.view_sistema'
     paginate_by = 15
 
     def get_queryset(self):
@@ -334,10 +344,11 @@ class SistemaListView(ListView):
         return context
 
 
-class MatrizAcessoListView(ListView):
+class MatrizAcessoListView(PermissionRequiredMixin, ListView):
     model = VinculoAcesso
     template_name = 'governance/matriz_acessos.html'
     context_object_name = 'vinculos'
+    permission_required = 'governance.view_vinculoacesso'
     paginate_by = 20
 
     def get_queryset(self):
