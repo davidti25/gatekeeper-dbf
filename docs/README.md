@@ -26,8 +26,9 @@ Bem-vindo à Biblioteca de Documentação do **GateKeeper-DBF**. Este repositór
 * [2026-11-05 - Plano de Ação: Fase 4 — Qualidade & DevSecOps](biblioteca/2026-11/2026-11-05-fase-4-qualidade-e-devsecops.md)
 * [2026-11-05 - Plano de Ação v2: Fase 5 — Fechamento de Portas & Catraca RBAC](biblioteca/2026-11/2026-11-05-fase-5-fechamento-de-portas-e-catraca-rbac.md)
 * [2026-11-05 - Plano de Ação v2: Fase 6 — Integridade do Fluxo de Offboarding](biblioteca/2026-11/2026-11-05-fase-6-integridade-do-fluxo-de-offboarding.md)
-* [2026-11-05 - Plano de Ação v2: Fase 7 — Trilha de Auditoria Confiável (SOC / SIEM)](biblioteca/2026-11/2026-11-05-fase-7-trilha-de-auditoria-confiavel-soc-siem.md)
-* [2026-11-05 - Plano de Ação v2: Fase 8 — Infraestrutura & Deploy Seguro](biblioteca/2026-11/2026-11-05-fase-8-infraestrutura-e-deploy-seguro.md)
+* [2026-11-05 - Plano de Ação v2: Fase 7 — Trilha de Auditoria Confiável (SOC / SIEM)](biblioteca/2026-11-05-fase-7-trilha-de-auditoria-confiavel-soc-siem.md)
+* [2026-11-05 - Plano de Ação v2: Fase 8 — Infraestrutura & Deploy Seguro](biblioteca/2026-11-05-fase-8-infraestrutura-e-deploy-seguro.md)
+* [2026-11-05 - Plano de Ação v2: Fase 9 — Front-end, Limpeza & Testes de Regressão](biblioteca/2026-11/2026-11-05-fase-9-frontend-limpeza-e-testes-de-regressao.md)
 
 ---
 
