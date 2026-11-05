@@ -82,3 +82,18 @@ Após a conclusão dos Planos v1 e v2, uma terceira análise exaustiva de segura
 - `ruff check` e `ruff format`: 100% conformes.
 - `manage.py check --deploy`: 0 erros de segurança identificados.
 - Checklist de acompanhamento do plano integralmente validado e comprovado com nomes de testes unitários.
+
+---
+
+## 4. Revisão pós-implementação (05/11/2026)
+
+Uma revisão do commit do Plano v3 encontrou quatro falhas residuais, todas corrigidas e cobertas pela classe `RevisaoPosPlanoV3Tests`:
+
+| # | Severidade | Falha | Correção | Teste |
+|---|---|---|---|---|
+| R4 | **Alta** | A tela de versão do histórico do admin (`history_form_view`, django-simple-history 3.13) exigia só permissão de **leitura** e gravava o formulário num POST. Um usuário do grupo *Auditor* com acesso ao admin conseguia alterar status e observações de um processo de offboarding, contornando o admin somente leitura (10.1) e a máquina de estados. | Classe base `HistoricoSomenteLeituraAdmin`: histórico só para consulta (POST negado para todos, botão "Reverter" oculto). Todos os admins com histórico herdam dela. | `test_r4_historico_do_admin_nao_permite_gravar` (inclui varredura de todos os admins registrados) |
+| R3 | Média | Vínculo **revogado** podia voltar a "Ativo" pelo admin, e o inline de vínculos na tela do colaborador permitia editar status e conceder acesso sem registrar `concedido_por`. | Vínculo revogado é somente leitura (estado final; reativar exige novo vínculo). Inline de vínculos virou só consulta, com link para a tela própria. | `test_r3_vinculo_revogado_e_somente_leitura_no_admin` |
+| R1 | Média | Com o cache padrão em banco (`dbcache`), `migrate` não criava a tabela; fora do compose o rate limit do login falhava com `no such table`. | Migração `0007_criar_tabela_cache` executa `createcachetable`. | `test_r1_migrate_cria_tabela_de_cache` |
+| R2 | Média | As checagens `gatekeeper.E001`–`E004` só rodavam no CI, nunca contra a configuração real de produção. | O serviço `migrate` roda `check --deploy --fail-level ERROR` antes de migrar; configuração insegura impede a subida do `web`. | `test_r2_compose_roda_check_deploy_antes_do_migrate` |
+
+**Validação após a revisão:** 79 testes aprovados, cobertura de 93%, `ruff` e `bandit` sem apontamentos, `makemigrations --check` sem pendências.

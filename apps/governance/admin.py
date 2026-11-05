@@ -7,6 +7,7 @@ Integrado ao simple_history para rastreamento de versões e imutabilidade de reg
 """
 
 from django.contrib import admin
+from django.core.exceptions import PermissionDenied
 from django.utils import timezone
 from django.utils.html import format_html
 from simple_history.admin import SimpleHistoryAdmin
@@ -31,6 +32,26 @@ ADMIN_MEDIA_CSS = {"all": ("css/admin.css",)}
 def _badge(rotulo, cor):
     """Selo colorido. `cor` vem sempre de um mapa fixo no código, nunca de dado do usuário."""
     return format_html('<span class="gk-badge gk-badge--{}">{}</span>', cor, rotulo)
+
+
+class HistoricoSomenteLeituraAdmin(SimpleHistoryAdmin):
+    """
+    Histórico de versões apenas para consulta.
+
+    No django-simple-history, a tela de uma versão antiga (history_form_view) exige só permissão
+    de *leitura* e, num POST, grava o formulário recebido. Um Auditor conseguia assim alterar
+    qualquer registro, inclusive os de offboarding bloqueados pelo SomenteLeituraAdminMixin.
+    Reverter versões também contornaria a máquina de estados do services.py, por isso é negado a todos.
+    Todo admin com histórico deve herdar desta classe (garantido por teste).
+    """
+
+    def history_form_view(self, request, object_id, version_id, extra_context=None):
+        if request.method != "GET":
+            raise PermissionDenied("O histórico é somente leitura: reverter versões não é permitido.")
+        return super().history_form_view(request, object_id, version_id, extra_context)
+
+    def revert_disabled(self, request, obj=None):
+        return True
 
 
 @admin.register(Localidade)
@@ -64,7 +85,7 @@ class PerfilAcessoInline(admin.TabularInline):
 
 
 @admin.register(Sistema)
-class SistemaAdmin(SimpleHistoryAdmin):
+class SistemaAdmin(HistoricoSomenteLeituraAdmin):
     class Media:
         css = ADMIN_MEDIA_CSS
 
@@ -101,15 +122,36 @@ class PerfilAcessoAdmin(admin.ModelAdmin):
     search_fields = ("nome", "sistema__nome", "descricao")
 
 
-class VinculoAcessoInline(admin.TabularInline):
+class SomenteLeituraAdminMixin:
+    """
+    Fase 10.1: Registros de offboarding só mudam pelo services.py (máquina de estados + travas + logs).
+    Bloqueia adições, alterações e exclusões via Django Admin para todos os usuários (inclusive superusuários).
+    """
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+class VinculoAcessoInline(SomenteLeituraAdminMixin, admin.TabularInline):
+    """
+    Somente consulta: concessão e alteração de vínculos passam pelo VinculoAcessoAdmin, que registra
+    o operador (save_model) e trava vínculos revogados. Editar aqui contornaria as duas regras.
+    """
+
     model = VinculoAcesso
     extra = 0
     fields = ("sistema", "perfil_acesso", "identificador_conta", "status", "data_concessao")
-    readonly_fields = ("data_concessao",)
+    show_change_link = True
 
 
 @admin.register(Colaborador)
-class ColaboradorAdmin(SimpleHistoryAdmin):
+class ColaboradorAdmin(HistoricoSomenteLeituraAdmin):
     class Media:
         css = ADMIN_MEDIA_CSS
 
@@ -145,7 +187,7 @@ class ColaboradorAdmin(SimpleHistoryAdmin):
 
 
 @admin.register(VinculoAcesso)
-class VinculoAcessoAdmin(SimpleHistoryAdmin):
+class VinculoAcessoAdmin(HistoricoSomenteLeituraAdmin):
     class Media:
         css = ADMIN_MEDIA_CSS
 
@@ -166,6 +208,12 @@ class VinculoAcessoAdmin(SimpleHistoryAdmin):
     # Fase 1.1 / 10.1: Imutabilidade da trilha e não-repúdio do operador
     def has_delete_permission(self, request, obj=None):
         return False
+
+    def has_change_permission(self, request, obj=None):
+        # Revogação é estado final: reativar acesso de desligado exige um novo vínculo (nova concessão auditada).
+        if obj is not None and obj.status == VinculoAcesso.StatusAcesso.REVOGADO:
+            return False
+        return super().has_change_permission(request, obj)
 
     def save_model(self, request, obj, form, change):
         if not change:
@@ -192,22 +240,6 @@ class VinculoAcessoAdmin(SimpleHistoryAdmin):
         return _badge(obj.get_status_display(), cor)
 
 
-class SomenteLeituraAdminMixin:
-    """
-    Fase 10.1: Registros de offboarding só mudam pelo services.py (máquina de estados + travas + logs).
-    Bloqueia adições, alterações e exclusões via Django Admin para todos os usuários (inclusive superusuários).
-    """
-
-    def has_add_permission(self, request, obj=None):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False
-
-
 class ItemChecklistOffboardingInline(SomenteLeituraAdminMixin, admin.TabularInline):
     model = ItemChecklistOffboarding
     extra = 0
@@ -215,7 +247,7 @@ class ItemChecklistOffboardingInline(SomenteLeituraAdminMixin, admin.TabularInli
 
 
 @admin.register(ProcessoOffboarding)
-class ProcessoOffboardingAdmin(SomenteLeituraAdminMixin, SimpleHistoryAdmin):
+class ProcessoOffboardingAdmin(SomenteLeituraAdminMixin, HistoricoSomenteLeituraAdmin):
     class Media:
         css = ADMIN_MEDIA_CSS
 
@@ -251,7 +283,7 @@ class ProcessoOffboardingAdmin(SomenteLeituraAdminMixin, SimpleHistoryAdmin):
 
 
 @admin.register(ItemChecklistOffboarding)
-class ItemChecklistOffboardingAdmin(SomenteLeituraAdminMixin, SimpleHistoryAdmin):
+class ItemChecklistOffboardingAdmin(SomenteLeituraAdminMixin, HistoricoSomenteLeituraAdmin):
     list_display = ("processo", "vinculo_acesso", "status", "revogado", "data_revogacao", "responsavel_revogacao")
     list_filter = ("status", "revogado")
     search_fields = ("processo__colaborador__nome_completo", "vinculo_acesso__sistema__nome", "evidencia_revogacao")

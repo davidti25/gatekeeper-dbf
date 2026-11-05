@@ -2095,3 +2095,102 @@ class Phase10To12IntegrityAndDeployTests(TestCase):
             ),
             f"E-mail não encontrado nos records capturados: {[getattr(r, 'audit', {}) for r in cm.records]}",
         )
+
+
+class RevisaoPosPlanoV3Tests(TestCase):
+    """
+    Regressões encontradas na revisão de segurança após o Plano v3:
+    R1 - `migrate` sozinho cria a tabela do cache (dbcache), sem depender do compose
+    R2 - Produção roda `check --deploy` antes de migrar (configuração insegura impede a subida)
+    R3 - Vínculo revogado é somente leitura no Admin (não pode ser reativado à mão)
+    R4 - Tela de histórico do simple_history não grava (revert exigia só permissão de leitura)
+    """
+
+    def setUp(self):
+        Phase10To12IntegrityAndDeployTests.setUp(self)
+        self.user_auditor = User.objects.create_user(
+            username="auditor.rev", email="auditor.rev@empresa.com.br", password="ComplexPassword123!", is_staff=True
+        )
+        self.user_auditor.groups.add(Group.objects.get(name="Auditor"))
+        Authenticator.objects.create(
+            user=self.user_auditor, type=Authenticator.Type.TOTP, data={"secret": "JBSWY3DPEHPK3PXP"}
+        )
+
+    def test_r1_migrate_cria_tabela_de_cache(self):
+        """R1: a migração recria a tabela do DatabaseCache quando ela não existe."""
+        import importlib
+
+        from django.core.cache import cache
+        from django.db import connection
+
+        tabela = settings.CACHES["default"]["LOCATION"]
+        with connection.cursor() as cursor:
+            cursor.execute(f"DROP TABLE {connection.ops.quote_name(tabela)}")  # nosec B608 - nome vem do settings
+        self.assertNotIn(tabela, connection.introspection.table_names())
+
+        migracao = importlib.import_module("apps.governance.migrations.0007_criar_tabela_cache")
+        migracao.criar_tabela_cache(None, connection.schema_editor())
+
+        self.assertIn(tabela, connection.introspection.table_names())
+        cache.set("gk-r1", "ok")
+        self.assertEqual(cache.get("gk-r1"), "ok")
+
+    def test_r2_compose_roda_check_deploy_antes_do_migrate(self):
+        """R2: o serviço migrate falha (e o web não sobe) se o check --deploy acusar erro."""
+        conteudo = (Path(settings.BASE_DIR) / "docker-compose.yml").read_text(encoding="utf-8")
+        comando = "python manage.py check --deploy --fail-level ERROR && python manage.py migrate --noinput"
+        self.assertIn(comando, conteudo)
+
+    def test_r3_vinculo_revogado_e_somente_leitura_no_admin(self):
+        """R3: nem superusuário reativa no Admin um acesso já revogado; vínculo ativo segue editável."""
+        from apps.governance.admin import VinculoAcessoAdmin
+
+        vinculo_admin = VinculoAcessoAdmin(VinculoAcesso, admin.site)
+        request = mock.MagicMock(user=self.superuser)
+        self.assertTrue(vinculo_admin.has_change_permission(request, self.vinculo))
+
+        self.vinculo.status = VinculoAcesso.StatusAcesso.REVOGADO
+        self.vinculo.save()
+        self.assertFalse(vinculo_admin.has_change_permission(request, self.vinculo))
+
+        self.client.force_login(self.superuser)
+        url = reverse("admin:governance_vinculoacesso_change", args=[self.vinculo.pk])
+        resp = self.client.post(url, {"status": VinculoAcesso.StatusAcesso.ATIVO})
+        self.assertEqual(resp.status_code, 403)
+        self.vinculo.refresh_from_db()
+        self.assertEqual(self.vinculo.status, VinculoAcesso.StatusAcesso.REVOGADO)
+
+        # O inline na tela do colaborador não pode ser um caminho alternativo de edição/concessão
+        from apps.governance.admin import VinculoAcessoInline
+
+        inline = VinculoAcessoInline(Colaborador, admin.site)
+        self.assertFalse(inline.has_add_permission(request, self.colab))
+        self.assertFalse(inline.has_change_permission(request, self.colab))
+        self.assertFalse(inline.has_delete_permission(request, self.colab))
+
+    def test_r4_historico_do_admin_nao_permite_gravar(self):
+        """R4: POST na tela de versão do histórico é negado, inclusive para quem só tem leitura."""
+        from simple_history.admin import SimpleHistoryAdmin
+
+        from apps.governance.admin import HistoricoSomenteLeituraAdmin
+
+        # Todo admin com histórico usa a base segura (protege admins futuros também)
+        for model_admin in admin.site._registry.values():
+            if isinstance(model_admin, SimpleHistoryAdmin):
+                self.assertIsInstance(model_admin, HistoricoSomenteLeituraAdmin, type(model_admin).__name__)
+
+        versao = self.processo.history.earliest()
+        url = reverse("admin:governance_processooffboarding_simple_history", args=[self.processo.pk, versao.history_id])
+        dados = {
+            "colaborador": self.colab.pk,
+            "status": ProcessoOffboarding.StatusOffboarding.CONCLUIDO,
+            "responsavel_ti": self.user_gestor.pk,
+            "observacoes": "alterado pelo historico",
+        }
+        for usuario in (self.user_auditor, self.superuser):
+            with self.subTest(usuario=usuario.username):
+                self.client.force_login(usuario)
+                self.assertEqual(self.client.get(url).status_code, 200)  # consultar continua permitido
+                self.assertEqual(self.client.post(url, dados).status_code, 403)
+                self.processo.refresh_from_db()
+                self.assertEqual(self.processo.status, ProcessoOffboarding.StatusOffboarding.INICIADO)

@@ -18,11 +18,15 @@ services:
       - gatekeeper-net
 
   migrate:
+    # Mesma tag nos dois serviços: uma única imagem (o segundo build é 100% cache).
+    image: gatekeeper-dbf:local
     build:
       context: .
       dockerfile: Dockerfile
     container_name: gatekeeper-migrate
-    command: ["sh", "-c", "python manage.py migrate --noinput && python manage.py createcachetable"]
+    # check --deploy antes de tocar no banco: configuração insegura (gatekeeper.E001-E004 etc.)
+    # encerra o serviço com erro e o web não sobe. Avisos (W*) não bloqueiam.
+    command: ["sh", "-c", "python manage.py check --deploy --fail-level ERROR && python manage.py migrate --noinput && python manage.py createcachetable"]
     environment: &web-env
       DEBUG: "False"
       SECRET_KEY: ${SECRET_KEY:?defina SECRET_KEY no .env}
@@ -41,6 +45,8 @@ services:
       - gatekeeper-net
 
   web:
+    # Mesma tag nos dois serviços: uma única imagem (o segundo build é 100% cache).
+    image: gatekeeper-dbf:local
     build:
       context: .
       dockerfile: Dockerfile
