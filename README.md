@@ -64,5 +64,5 @@ Este repositório segue rígidas práticas de **DevSecOps**:
 
 ## 📖 Diário de Desenvolvimento
 
-A evolução diária deste projeto é documentada detalhadamente na nossa [Biblioteca de Documentação](file:///home/davidbf/dev/GateKeeper-DBF/docs/README.md).
+A evolução diária deste projeto é documentada detalhadamente na nossa [Biblioteca de Documentação](docs/README.md).
 

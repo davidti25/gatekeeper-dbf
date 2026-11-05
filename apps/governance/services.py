@@ -5,10 +5,13 @@ Fase 1.3: Transações atômicas, bloqueio de concorrência (select_for_update)
 e garantia de idempotência no encerramento de acessos.
 """
 
+import logging
 from django.db import transaction
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 from .models import ItemChecklistOffboarding, VinculoAcesso, ProcessoOffboarding, Colaborador
+
+logger = logging.getLogger('gatekeeper.audit')
 
 
 @transaction.atomic
@@ -46,6 +49,12 @@ def revogar_item_checklist(item_id, responsavel, evidencia, observacao="", statu
         vinculo.justificativa = f"Offboarding executado. Evidência: {evidencia}"
         vinculo.save()
 
+    logger.info(
+        f"OFFBOARDING_ITEM_REVOKED: colaborador='{item.processo.colaborador.nome_completo}' "
+        f"sistema='{vinculo.sistema.nome}' conta='{vinculo.identificador_conta}' "
+        f"status='{status}' operador='{responsavel.username}' evidencia='{evidencia}'"
+    )
+
     # 3. Avaliar conclusão global do Processo de Offboarding
     processo = item.processo
     total_itens = processo.itens_checklist.count()
@@ -69,4 +78,7 @@ def revogar_item_checklist(item_id, responsavel, evidencia, observacao="", statu
             colab.data_desligamento = timezone.localdate()
         colab.save()
 
+        logger.info(f"OFFBOARDING_PROCESS_CONCLUDED: colaborador='{colab.nome_completo}' operador='{responsavel.username}'")
+
     return item, processo
+

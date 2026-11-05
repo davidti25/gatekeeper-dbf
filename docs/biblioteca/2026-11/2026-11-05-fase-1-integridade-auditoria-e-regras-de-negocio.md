@@ -111,3 +111,4 @@ Avançar para a **Fase 2 (Plataforma & Hardening de Configuração)** do Plano d
 * **2.3:** Front-end local (Tailwind / Lucide desvinculados de CDN externa) + CSP rígida sem `unsafe-inline`.
 * **2.4:** Configuração de produção segura (`python manage.py check --deploy`).
 * **2.5:** Revisão de permissões de diretórios e links da documentação.
+

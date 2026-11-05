@@ -6,58 +6,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}GateKeeper-DBF{% endblock %} | Governança de Acessos & IAM</title>
     
-    <!-- Google Fonts: Inter -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Fontes Locais (Inter & JetBrains Mono) - Sem vazamento de IP / LGPD -->
+    <link rel="stylesheet" href="{% static 'fonts/fonts.css' %}">
     
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                        mono: ['JetBrains Mono', 'monospace'],
-                    },
-                    colors: {
-                        brand: {
-                            50: '#f0f9ff',
-                            100: '#e0f2fe',
-                            400: '#38bdf8',
-                            500: '#0ea5e9',
-                            600: '#0284c7',
-                            700: '#0369a1',
-                            900: '#0c4a6e',
-                        }
-                    }
-                }
-            }
-        }
-    </script>
+    <!-- Tailwind CSS Compilado Localmente -->
+    <link rel="stylesheet" href="{% static 'css/tailwind.min.css' %}">
 
-    <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-    
-    <style>
-        /* Custom scrollbar for modern feel */
-        ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #0f172a;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #334155;
-            border-radius: 4px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #475569;
-        }
-    </style>
+    <!-- Lucide Icons Local -->
+    <script src="{% static 'vendor/lucide.min.js' %}" defer></script>
     {% block extra_head %}{% endblock %}
 </head>
 <body class="flex flex-col min-h-screen bg-slate-950 font-sans antialiased text-slate-200">
@@ -189,10 +145,7 @@
     </footer>
 
     <!-- Scripts Estáticos Globais -->
-    <script src="{% static 'js/app.js' %}"></script>
-    <script>
-        lucide.createIcons();
-    </script>
+    <script src="{% static 'js/app.js' %}" defer></script>
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>

@@ -61,6 +61,7 @@ venv.bak/
 # Arquivos de Mídia e Estáticos Coletados
 media/
 staticfiles/
+.django_tailwind_cli/
 
 # --- Logs de Sistema & Auditoria Local ---
 *.log

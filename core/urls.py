@@ -20,8 +20,8 @@ urlpatterns = [
     ),
     path('logout/', auth_views.LogoutView.as_view(), name='logout'),
 
-    # Painel Administrativo de Segurança
-    path('admin/', admin.site.urls),
+    # Painel Administrativo de Segurança (Rota configurável - Fase 2.4)
+    path(settings.ADMIN_URL, admin.site.urls),
 
     # Módulo de Governança e Identidades
     path('', include('apps.governance.urls')),

@@ -33,8 +33,9 @@ SECRET_KEY = env('SECRET_KEY')
 DEBUG = env('DEBUG')
 
 ALLOWED_HOSTS = env('ALLOWED_HOSTS')
-if 'testserver' not in ALLOWED_HOSTS:
-    ALLOWED_HOSTS.append('testserver')
+
+# Rota administrativa configurável (Fase 2.4 - Obfuscation & Security by Design)
+ADMIN_URL = env('ADMIN_URL', default='admin/')
 
 # Application definition
 
@@ -55,6 +56,10 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # Servidor estático seguro com compressão e hash (Fase 2.3)
+    'whitenoise.middleware.WhiteNoiseMiddleware',
+    # Content Security Policy (Fase 2.3 - Proteção anti-XSS sem unsafe-inline)
+    'csp.middleware.CSPMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -135,41 +140,117 @@ USE_TZ = True
 
 
 # Static files (CSS, JavaScript, Images) & Mídia
-# https://docs.djangoproject.com/en/5.1/howto/static-files/
-
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [
     BASE_DIR / 'static',
 ]
 
+# Armazenamento estático com WhiteNoise (Fase 2.3)
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
+WHITENOISE_MANIFEST_STRICT = False
+
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 # Default primary key field type
-# https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
-
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
 # ==============================================================================
-# Hardening de Segurança (OWASP Top 10 & CIS Controls)
+# Hardening de Segurança (OWASP Top 10, CIS Controls & check --deploy)
 # ==============================================================================
 
-# Proteção contra Clickjacking
+# Proteção contra Clickjacking e MIME-Sniffing
 X_FRAME_OPTIONS = 'DENY'
-
-# Proteção contra MIME-Sniffing
 SECURE_CONTENT_TYPE_NOSNIFF = True
 
-# Proteção XSS legada do navegador
-SECURE_BROWSER_XSS_FILTER = True
-
-# Segurança de Cookies de Sessão e CSRF
+# Segurança de Cookies de Sessão e CSRF (Fase 2.4)
 SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SECURE = env('SESSION_COOKIE_SECURE')
-CSRF_COOKIE_SECURE = env('CSRF_COOKIE_SECURE')
+SESSION_COOKIE_SECURE = env.bool('SESSION_COOKIE_SECURE', default=not DEBUG)
+CSRF_COOKIE_SECURE = env.bool('CSRF_COOKIE_SECURE', default=not DEBUG)
+SESSION_COOKIE_AGE = env.int('SESSION_COOKIE_AGE', default=28800)  # 8 horas (jornada de trabalho)
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 
-# Redirecionamento HTTPS
-SECURE_SSL_REDIRECT = env('SECURE_SSL_REDIRECT')
+# Redirecionamento HTTPS e cabeçalhos HSTS (Fase 2.4 - CIS 5.5 / NIST)
+SECURE_SSL_REDIRECT = env.bool('SECURE_SSL_REDIRECT', default=not DEBUG)
+SECURE_HSTS_SECONDS = env.int('SECURE_HSTS_SECONDS', default=31536000 if not DEBUG else 0)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env.bool('SECURE_HSTS_INCLUDE_SUBDOMAINS', default=not DEBUG)
+SECURE_HSTS_PRELOAD = env.bool('SECURE_HSTS_PRELOAD', default=not DEBUG)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+
+# ==============================================================================
+# Content Security Policy (CSP - Fase 2.3)
+# ==============================================================================
+# Política estrita: sem 'unsafe-inline' para scripts, bloqueando injeções XSS
+CONTENT_SECURITY_POLICY = {
+    "DIRECTIVES": {
+        "default-src": ["'self'"],
+        "script-src": ["'self'"],
+        "style-src": ["'self'"],
+        "img-src": ["'self'", "data:"],
+        "font-src": ["'self'"],
+        "connect-src": ["'self'"],
+        "frame-ancestors": ["'none'"],
+        "form-action": ["'self'"],
+    }
+}
+
+# Compatibilidade legada django-csp 3.x
+CSP_DEFAULT_SRC = ("'self'",)
+CSP_SCRIPT_SRC = ("'self'",)
+CSP_STYLE_SRC = ("'self'",)
+CSP_IMG_SRC = ("'self'", "data:")
+CSP_FONT_SRC = ("'self'",)
+CSP_CONNECT_SRC = ("'self'",)
+CSP_FRAME_ANCESTORS = ("'none'",)
+CSP_FORM_ACTION = ("'self'",)
+
+
+# ==============================================================================
+# Auditoria Estruturada de Eventos SOC & SIEM (Fase 2.4)
+# ==============================================================================
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '[{asctime}] [{levelname}] [{name}] {message}',
+            'style': '{',
+        },
+        'audit': {
+            'format': '[{asctime}] [SOC_AUDIT] [{levelname}] [{name}] {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+        'audit_console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'audit',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': env('DJANGO_LOG_LEVEL', default='INFO'),
+        },
+        'gatekeeper.audit': {
+            'handlers': ['audit_console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}

@@ -487,3 +487,83 @@ class Phase1AuditAndIntegrityTests(TestCase):
         self.assertNotEqual(processo_1.pk, processo_2.pk)
         self.assertEqual(self.colaborador.processos_offboarding.count(), 2)
 
+
+class Phase2PlatformAndHardeningTests(TestCase):
+    """
+    Testes de Plataforma & Hardening de Configuração (Fase 2).
+    Valida:
+    - 2.3: Content Security Policy (CSP) sem 'unsafe-inline'
+    - 2.3: Front-end local desvinculado de CDNs externas (LGPD / Supply Chain)
+    - 2.4: Hardening de sessão, cookies e configurações de deploy
+    - 2.4: Trilha de auditoria SOC em sinais de autenticação
+    """
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(
+            username='soc.auditor',
+            email='soc@empresa.com.br',
+            password='ComplexPassword123!'
+        )
+        grupo_auditor = Group.objects.get(name='Auditor')
+        self.user.groups.add(grupo_auditor)
+
+    def test_20_csp_headers_sem_unsafe_inline(self):
+        """2.3: Cabeçalho Content-Security-Policy presente e bloqueando inline scripts externos."""
+        resp = self.client.get(reverse('login'))
+        self.assertEqual(resp.status_code, 200)
+
+        self.assertIn('Content-Security-Policy', resp.headers)
+        csp = resp.headers['Content-Security-Policy']
+
+        # default-src 'self'
+        self.assertIn("default-src 'self'", csp)
+        # script-src 'self' sem 'unsafe-inline'
+        self.assertIn("script-src 'self'", csp)
+        self.assertNotIn("'unsafe-inline'", csp)
+        # frame-ancestors 'none' (anti-clickjacking)
+        self.assertIn("frame-ancestors 'none'", csp)
+
+    def test_21_recursos_estaticos_locais_sem_cdns_externos(self):
+        """2.3: Front-end servido 100% de static/ sem dependência de CDNs ou envio de dados/IP para terceiros (LGPD)."""
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse('dashboard'))
+        self.assertEqual(resp.status_code, 200)
+
+        # Não deve haver conexões externas para Google Fonts, CDN Tailwind ou Unpkg
+        self.assertNotContains(resp, 'cdn.tailwindcss.com')
+        self.assertNotContains(resp, 'unpkg.com')
+        self.assertNotContains(resp, 'fonts.googleapis.com')
+        self.assertNotContains(resp, 'fonts.gstatic.com')
+
+        # Deve conter as rotas locais compiladas e servidas pelo WhiteNoise (com ou sem hash)
+        content = resp.content.decode()
+        self.assertIn('/static/fonts/fonts.', content)
+        self.assertIn('/static/css/tailwind.min.', content)
+        self.assertIn('/static/vendor/lucide.min.', content)
+        self.assertIn('/static/js/app.', content)
+
+    def test_22_sessao_e_hardening_cookies(self):
+        """2.4: Validação de cookies de sessão de 8 horas e isolamento HttpOnly."""
+        from django.conf import settings
+        self.assertTrue(settings.SESSION_COOKIE_HTTPONLY)
+        self.assertTrue(settings.CSRF_COOKIE_HTTPONLY)
+        self.assertEqual(settings.SESSION_COOKIE_AGE, 28800)
+        self.assertTrue(settings.SESSION_EXPIRE_AT_BROWSER_CLOSE)
+        self.assertEqual(settings.X_FRAME_OPTIONS, 'DENY')
+        self.assertTrue(settings.SECURE_CONTENT_TYPE_NOSNIFF)
+
+    def test_23_trilha_auditoria_soc_sinais(self):
+        """2.4: Eventos de autenticação disparam logs estruturados para ingestão em SIEM."""
+        import logging
+        with self.assertLogs('gatekeeper.audit', level='INFO') as cm:
+            # Login com sucesso
+            self.client.login(username='soc.auditor', password='ComplexPassword123!')
+            # Logout
+            self.client.logout()
+
+        logs_texto = "\n".join(cm.output)
+        self.assertIn("AUTH_LOGIN_SUCCESS", logs_texto)
+        self.assertIn("soc.auditor", logs_texto)
+        self.assertIn("AUTH_LOGOUT", logs_texto)
+
+

@@ -16,11 +16,12 @@ Bem-vindo à Biblioteca de Documentação do **GateKeeper-DBF**. Este repositór
 ## 📅 Índice Cronológico do Diário de Bordo
 
 ### Novembro / 2026
-* [2026-11-05 - Fase 1: Planejamento, Arquitetura & Governança](file:///home/davidbf/dev/GateKeeper-DBF/docs/biblioteca/2026-11/2026-11-05-fase-1-planejamento-e-arquitetura.md)
-* [2026-11-05 - Fase 2: Fundação Django, Hardening & Modelagem IAM](file:///home/davidbf/dev/GateKeeper-DBF/docs/biblioteca/2026-11/2026-11-05-fase-2-fundacao-django-e-modelagem.md)
-* [2026-11-05 - Fase 3: Dashboard Executivo & Central de Offboarding Interativo](file:///home/davidbf/dev/GateKeeper-DBF/docs/biblioteca/2026-11/2026-11-05-fase-3-dashboard-e-central-de-offboarding.md)
-* [2026-11-05 - Plano de Ação: Fase 0 — Emergência (Autenticação Obrigatória, RBAC & Hardening)](file:///home/davidbf/dev/GateKeeper-DBF/docs/biblioteca/2026-11/2026-11-05-fase-0-emergencia-autenticacao-e-rbac.md)
-* [2026-11-05 - Plano de Ação: Fase 1 — Integridade da Auditoria & Regras de Negócio](file:///home/davidbf/dev/GateKeeper-DBF/docs/biblioteca/2026-11/2026-11-05-fase-1-integridade-auditoria-e-regras-de-negocio.md)
+* [2026-11-05 - Fase 1: Planejamento, Arquitetura & Governança](biblioteca/2026-11/2026-11-05-fase-1-planejamento-e-arquitetura.md)
+* [2026-11-05 - Fase 2: Fundação Django, Hardening & Modelagem IAM](biblioteca/2026-11/2026-11-05-fase-2-fundacao-django-e-modelagem.md)
+* [2026-11-05 - Fase 3: Dashboard Executivo & Central de Offboarding Interativo](biblioteca/2026-11/2026-11-05-fase-3-dashboard-e-central-de-offboarding.md)
+* [2026-11-05 - Plano de Ação: Fase 0 — Emergência (Autenticação Obrigatória, RBAC & Hardening)](biblioteca/2026-11/2026-11-05-fase-0-emergencia-autenticacao-e-rbac.md)
+* [2026-11-05 - Plano de Ação: Fase 1 — Integridade da Auditoria & Regras de Negócio](biblioteca/2026-11/2026-11-05-fase-1-integridade-auditoria-e-regras-de-negocio.md)
+* [2026-11-05 - Plano de Ação: Fase 2 — Plataforma & Hardening de Configuração](biblioteca/2026-11/2026-11-05-fase-2-plataforma-e-hardening-de-configuracao.md)
 
 ---
 

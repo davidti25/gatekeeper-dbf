@@ -1,0 +1,16 @@
+@media print {
+    body {
+        background: white !important;
+        color: black !important;
+        font-size: 11pt;
+    }
+    .no-print {
+        display: none !important;
+    }
+    .print-border {
+        border-color: #cbd5e1 !important;
+    }
+    .page-break {
+        page-break-before: always;
+    }
+}

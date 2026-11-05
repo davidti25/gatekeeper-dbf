@@ -30,6 +30,9 @@ from .models import (
 )
 from .forms import RevogacaoItemForm
 from .services import revogar_item_checklist
+import logging
+
+logger = logging.getLogger('gatekeeper.audit')
 
 User = get_user_model()
 
@@ -194,8 +197,10 @@ def iniciar_offboarding_view(request, pk):
         processo.status = ProcessoOffboarding.StatusOffboarding.CONCLUIDO
         processo.concluido_em = timezone.now()
         processo.save()
+        logger.info(f"OFFBOARDING_PROCESS_INITIATED: colaborador='{colaborador.nome_completo}' operador='{responsavel.username}' motivo='{processo.observacoes}' total_itens=0 (concluido)")
         messages.success(request, f"Offboarding de {colaborador.nome_completo} concluído (não possuía acessos vinculados).")
     else:
+        logger.info(f"OFFBOARDING_PROCESS_INITIATED: colaborador='{colaborador.nome_completo}' operador='{responsavel.username}' motivo='{processo.observacoes}' total_itens={acessos_a_revogar.count()}")
         messages.success(request, f"Processo de Offboarding iniciado para {colaborador.nome_completo}. {acessos_a_revogar.count()} acessos pendentes de revogação.")
 
     return redirect('offboarding_detail', pk=processo.pk)

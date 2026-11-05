@@ -1,3 +1,4 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -5,27 +6,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Relatório de Offboarding - {{ processo.colaborador.nome_completo }} | GateKeeper-DBF</title>
     
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Fontes Locais (Inter & JetBrains Mono) - Sem vazamento de IP / LGPD -->
+    <link rel="stylesheet" href="{% static 'fonts/fonts.css' %}">
+    
+    <!-- Tailwind CSS Compilado Localmente -->
+    <link rel="stylesheet" href="{% static 'css/tailwind.min.css' %}">
+    <link rel="stylesheet" href="{% static 'css/print.css' %}">
 
-    <style>
-        @media print {
-            body {
-                background: white !important;
-                color: black !important;
-                font-size: 11pt;
-            }
-            .no-print {
-                display: none !important;
-            }
-            .print-border {
-                border-color: #cbd5e1 !important;
-            }
-            .page-break {
-                page-break-before: always;
-            }
-        }
-    </style>
+    <!-- Lucide Icons & Scripts Utilitários Locais -->
+    <script src="{% static 'vendor/lucide.min.js' %}" defer></script>
+    <script src="{% static 'js/app.js' %}" defer></script>
 </head>
 <body class="bg-slate-100 text-slate-800 font-sans min-h-screen py-8">
 
@@ -37,7 +27,7 @@
                 <span>&larr; Voltar para o Checklist</span>
             </a>
             <div class="flex items-center space-x-3">
-                <button onclick="window.print();" class="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-sm shadow transition flex items-center space-x-2">
+                <button type="button" data-action="print" class="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-sm shadow transition flex items-center space-x-2">
                     <i data-lucide="printer" class="w-4 h-4"></i>
                     <span>Imprimir / Salvar PDF</span>
                 </button>
@@ -221,9 +211,6 @@
 
     </div>
 
-    <script>
-        lucide.createIcons();
-    </script>
 </body>
 </html>
 
