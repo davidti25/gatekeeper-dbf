@@ -56,3 +56,4 @@ Para cada sistema que os colaboradores desse setor utilizam, preencha as informa
 3. **Existe conta de Administrador disponível para a TI assumir a gestão centralizada desse software?**
    * [ ] Sim, a TI já possui ou receberá as credenciais master.
    * [ ] Não, precisa ser solicitado suporte com o fornecedor.
+

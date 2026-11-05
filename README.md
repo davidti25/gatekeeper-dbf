@@ -65,3 +65,4 @@ Este repositório segue rígidas práticas de **DevSecOps**:
 ## 📖 Diário de Desenvolvimento
 
 A evolução diária deste projeto é documentada detalhadamente na nossa [Biblioteca de Documentação](file:///home/davidbf/dev/projeto/docs/README.md).
+

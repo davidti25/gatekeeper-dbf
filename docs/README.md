@@ -16,3 +16,4 @@ Bem-vindo à Biblioteca de Documentação do **GateKeeper-DBF**. Este repositór
 
 ### Novembro / 2026
 * [2026-11-05 - Fase 1: Planejamento, Arquitetura & Governança](file:///home/davidbf/dev/projeto/docs/biblioteca/2026-11/2026-11-05-fase-1-planejamento-e-arquitetura.md)
+

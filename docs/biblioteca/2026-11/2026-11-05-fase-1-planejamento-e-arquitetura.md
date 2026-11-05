@@ -56,3 +56,4 @@ Para garantir que o repositório no GitHub possa ser compartilhado de forma prof
 1. Estruturação do modelo de levantamento de sistemas por setor para alinhamento com as lideranças.
 2. Criação do ambiente virtual Python (`venv`) e arquivo de dependências seguras (`requirements.txt`).
 3. Inicialização do projeto base Django (`gatekeeper_core`) com configurações de segurança ativadas.
+
