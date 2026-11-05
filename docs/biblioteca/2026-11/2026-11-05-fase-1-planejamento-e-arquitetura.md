@@ -54,7 +54,7 @@ Para garantir que o repositório no GitHub possa ser compartilhado de forma prof
 ## 5. 📦 Ambiente de Desenvolvimento Configurado
 
 * **Ambiente Virtual (Virtualenv):** `venv` inicializado com Python 3.14.
-* **Gerenciador de Dependências:** Criado [`requirements.txt`](file:///home/davidbf/dev/projeto/requirements.txt) com:
+* **Gerenciador de Dependências:** Criado [`requirements.txt`](file:///home/davidbf/dev/GateKeeper-DBF/requirements.txt) com:
   * `Django 5.1.15` (Framework web robusto com defesas OWASP nativas).
   * `django-environ 0.14.0` (Gerenciamento seguro de segredos e variáveis de ambiente).
 * **Isolamento Confirmado:** Todas as dependências instaladas estritamente dentro de `venv/`, sem poluir o sistema operacional local.
