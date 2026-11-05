@@ -7,9 +7,12 @@ Cobre:
 - Não-Repúdio: Atribuição estrita a request.user (sem fallbacks automáticos)
 - Mitigação de Stored XSS com data-confirm desacoplado
 - Integridade do fluxo de revogação e cálculo de progresso de offboarding
+- Fase 1 (Integridade & Auditoria): Simple-History, Proteção onDelete, Concorrência atômica, Validação LGPD
+- Fase 2 (Hardening & Plataforma): Local-Only Assets, WhiteNoise, Strict CSP sem inline, Cookies de Sessão, Logs SOC
+- Fase 3 (Identidade Forte): MFA / 2FA (TOTP), Rate Limiting anti-bruteforce, Blindagem admin.site.login
 """
 
-from django.test import TestCase, Client
+from django.test import TestCase, Client, override_settings
 from django.urls import reverse
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
@@ -138,7 +141,7 @@ class GovernanceSecurityAndModelTests(TestCase):
         """Garante que a tela de login está acessível publicamente com formulário CSRF e inputs."""
         resp = self.client.get(reverse('login'))
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'name="username"')
+        self.assertContains(resp, 'name="login"')
         self.assertContains(resp, 'name="password"')
         self.assertContains(resp, 'csrfmiddlewaretoken')
 
@@ -565,5 +568,82 @@ class Phase2PlatformAndHardeningTests(TestCase):
         self.assertIn("AUTH_LOGIN_SUCCESS", logs_texto)
         self.assertIn("soc.auditor", logs_texto)
         self.assertIn("AUTH_LOGOUT", logs_texto)
+
+
+class Phase3StrongIdentityAndMFATests(TestCase):
+    """
+    Testes de Segurança para Fase 3: Identidade Forte & Autenticação Multi-Fator (MFA).
+
+    Cobre:
+    - 3.1: Integração com django-allauth e MFA (TOTP e Recovery Codes).
+    - 3.1: Proteção contra Brute Force (ACCOUNT_RATE_LIMITS = 5 tentativas em 5 min).
+    - 3.1: Blindagem de /admin/login/ via secure_admin_login (redireciona para login centralizado).
+    - 3.1: Isolamento de rotas MFA: não autenticado é redirecionado; autenticado acessa o hub.
+    - 3.1: Disponibilidade dos modelos de MFA e integridade de e-mails de auditoria.
+    """
+
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(
+            username='soc.analyst',
+            email='soc.analyst@empresa.com.br',
+            password='ComplexPassword123!'
+        )
+
+    def test_30_admin_login_protegido_secure_admin_login(self):
+        """3.1: /admin/login/ redireciona usuários não autenticados para a tela segura com MFA e rate limiting."""
+        resp = self.client.get('/admin/login/')
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn('/login/', resp.get('Location'))
+        self.assertIn('next=%2Fadmin%2Flogin%2F', resp.get('Location'))
+
+    def test_31_mfa_endpoints_acessiveis_e_protegidos(self):
+        """3.1: Painel MFA /accounts/2fa/ exige login prévio e responde 200 para usuário autenticado."""
+        # Não autenticado -> Redirecionado para o login
+        resp_unauth = self.client.get(reverse('mfa_index'))
+        self.assertEqual(resp_unauth.status_code, 302)
+        self.assertIn('/login/', resp_unauth.get('Location'))
+
+        # Autenticado -> Acessa painel MFA com layout SOC
+        self.client.force_login(self.user)
+        resp_auth = self.client.get(reverse('mfa_index'))
+        self.assertEqual(resp_auth.status_code, 200)
+        self.assertContains(resp_auth, 'Autenticação de dois fatores')
+        self.assertContains(resp_auth, '/accounts/2fa/totp/activate/')
+        self.assertContains(resp_auth, 'Códigos de recuperação')
+
+    @override_settings(PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'])
+    def test_32_rate_limit_tentativas_excessivas_de_login(self):
+        """3.1: Tentativas consecutivas de login incorreto disparam rate limiting (MITRE ATT&CK T1110)."""
+        login_url = reverse('account_login')
+
+        # 5 tentativas incorretas consecutivas
+        for _ in range(5):
+            resp = self.client.post(login_url, {'login': 'soc.analyst', 'password': 'WrongPassword!'})
+            self.assertEqual(resp.status_code, 200)
+
+        # 6ª tentativa deve ser barrada pelo allauth rate limiter
+        resp_blocked = self.client.post(login_url, {'login': 'soc.analyst', 'password': 'WrongPassword!'})
+        self.assertEqual(resp_blocked.status_code, 200)
+        self.assertContains(resp_blocked, 'Muitas tentativas de login falharam')
+
+    def test_33_mfa_models_migrados_e_disponiveis(self):
+        """3.1: Modelos de EmailAddress e Authenticator (TOTP/Recovery) operacionais no banco."""
+        from allauth.account.models import EmailAddress
+        from allauth.mfa.models import Authenticator
+
+        # Criação de email associado
+        email_record = EmailAddress.objects.create(
+            user=self.user,
+            email=self.user.email,
+            verified=True,
+            primary=True
+        )
+        self.assertEqual(EmailAddress.objects.filter(user=self.user).count(), 1)
+        self.assertTrue(email_record.verified)
+
+        # Tabela de autenticadores MFA está vazia inicialmente para o usuário
+        self.assertEqual(Authenticator.objects.filter(user=self.user).count(), 0)
+
 
 

@@ -16,3 +16,7 @@ whitenoise>=6.8.0
 
 # Content Security Policy (CSP - Proteção Rigorosa Anti-XSS)
 django-csp>=4.0
+
+# Identidade Forte, MFA (TOTP / Recovery Codes) e Rate Limiting (Fase 3)
+django-allauth[mfa]>=65.0.0
+

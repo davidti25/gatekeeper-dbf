@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    {% block head_title %}{% endblock %} | GateKeeper-DBF
+{% endblock %}
+
+{% block content %}
+<div class="min-h-[75vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-md w-full space-y-6">
+        <div class="p-8 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-2xl shadow-black/40">
+            {% block body %}
+            {% block content_area %}{% endblock %}
+            {% endblock %}
+        </div>
+    </div>
+</div>
+{% endblock %}

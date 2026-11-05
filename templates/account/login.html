@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+
+{% block title %}Acesso Seguro | GateKeeper-DBF{% endblock %}
+
+{% block content %}
+<div class="min-h-[75vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-md w-full space-y-6">
+        
+        <!-- Header / Logo -->
+        <div class="text-center space-y-2">
+            <div class="inline-flex w-14 h-14 rounded-2xl bg-gradient-to-tr from-sky-600 via-indigo-600 to-cyan-400 items-center justify-center shadow-lg shadow-sky-500/20 mb-2">
+                <i data-lucide="shield-lock" class="w-8 h-8 text-white"></i>
+            </div>
+            <h2 class="text-2xl font-extrabold text-white tracking-tight">
+                Autenticação de Segurança
+            </h2>
+            <p class="text-xs text-slate-400">
+                Acesso restrito a operadores autorizados de SecOps e Governança IAM.
+            </p>
+        </div>
+
+        <!-- Login Card -->
+        <div class="p-8 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-2xl shadow-black/40">
+            {% if form.errors %}
+            <div class="p-3.5 rounded-xl bg-rose-950/50 border border-rose-800/80 text-xs text-rose-200 mb-5 flex items-start space-x-2.5">
+                <i data-lucide="alert-octagon" class="w-4 h-4 text-rose-400 mt-0.5 shrink-0"></i>
+                <div>
+                    <span class="font-bold block">Falha de Autenticação</span>
+                    {% for error in form.non_field_errors %}
+                        <span>{{ error }}</span>
+                    {% empty %}
+                        <span>Credenciais inválidas ou limite de tentativas excedido.</span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <form method="post" action="{% url 'account_login' %}" class="space-y-4">
+                {% csrf_token %}
+                {% if redirect_field_value %}
+                <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}">
+                {% endif %}
+
+                <!-- Login / Username / Email -->
+                <div>
+                    <label for="id_login" class="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
+                        Usuário / Identificador
+                    </label>
+                    <div class="relative">
+                        <input type="text" name="login" id="id_login" required autofocus placeholder="seu.usuario" class="w-full pl-10 pr-3 py-2.5 rounded-xl bg-slate-950/80 border border-slate-700/80 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 transition">
+                        <i data-lucide="user" class="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5"></i>
+                    </div>
+                    {% if form.login.errors %}
+                    <p class="text-[11px] text-rose-400 mt-1">{{ form.login.errors.0 }}</p>
+                    {% endif %}
+                </div>
+
+                <!-- Password -->
+                <div>
+                    <label for="id_password" class="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
+                        Senha de Acesso
+                    </label>
+                    <div class="relative">
+                        <input type="password" name="password" id="id_password" required placeholder="••••••••••••" class="w-full pl-10 pr-3 py-2.5 rounded-xl bg-slate-950/80 border border-slate-700/80 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 transition">
+                        <i data-lucide="lock" class="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5"></i>
+                    </div>
+                    {% if form.password.errors %}
+                    <p class="text-[11px] text-rose-400 mt-1">{{ form.password.errors.0 }}</p>
+                    {% endif %}
+                </div>
+
+                <!-- Submit Button -->
+                <div class="pt-2">
+                    <button type="submit" class="w-full py-2.5 px-4 rounded-xl text-sm font-semibold bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white shadow-lg shadow-sky-600/20 transition-all flex items-center justify-center space-x-2">
+                        <i data-lucide="log-in" class="w-4 h-4"></i>
+                        <span>Entrar no GateKeeper</span>
+                    </button>
+                </div>
+            </form>
+
+            <div class="mt-6 pt-5 border-t border-slate-800/80 text-center text-[11px] text-slate-500 font-mono">
+                <span>Trilha de auditoria ativa • Limite de taxa (Rate Limit) • Suporte a MFA</span>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}

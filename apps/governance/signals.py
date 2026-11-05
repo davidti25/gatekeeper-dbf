@@ -41,3 +41,4 @@ def log_user_login_failed(sender, credentials, request, **kwargs):
     ip = _get_client_ip(request)
     username = credentials.get('username', 'DESCONHECIDO') if credentials else 'DESCONHECIDO'
     logger.warning(f"AUTH_LOGIN_FAILED [MITRE T1110]: tentativa_usuario='{username}' ip='{ip}'")
+

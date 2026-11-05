@@ -83,6 +83,11 @@
                         </a>
                         {% endif %}
 
+                        <a href="{% url 'mfa_index' %}" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 flex items-center space-x-1.5 transition-all" title="Gerenciar Autenticação em Duas Etapas (MFA)">
+                            <i data-lucide="key-round" class="w-3.5 h-3.5 text-sky-400"></i>
+                            <span class="hidden md:inline">MFA</span>
+                        </a>
+
                         <form method="post" action="{% url 'logout' %}" class="inline">
                             {% csrf_token %}
                             <button type="submit" class="p-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition" title="Encerrar Sessão">

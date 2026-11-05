@@ -50,8 +50,18 @@ INSTALLED_APPS = [
     # Auditoria de Alterações e Snapshots de Versão (CIS 5.5 / LGPD)
     'simple_history',
 
+    # Identidade Forte, MFA e Rate Limiting (Fase 3 - allauth)
+    'allauth',
+    'allauth.account',
+    'allauth.mfa',
+
     # Módulos Internos do GateKeeper-DBF
     'apps.governance',
+]
+
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',
+    'allauth.account.auth_backends.AuthenticationBackend',
 ]
 
 MIDDLEWARE = [
@@ -65,6 +75,8 @@ MIDDLEWARE = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.auth.middleware.LoginRequiredMiddleware',
+    # Middleware obrigatório do allauth para gerenciamento de sessão e rate limits
+    'allauth.account.middleware.AccountMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     # Middleware para capturar o usuário que realizou a alteração no histórico
@@ -75,6 +87,19 @@ MIDDLEWARE = [
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'dashboard'
 LOGOUT_REDIRECT_URL = 'login'
+
+# ==============================================================================
+# Identidade Forte, MFA e Rate Limiting (allauth - Fase 3.1 / CIS 6.5)
+# ==============================================================================
+ACCOUNT_LOGIN_METHODS = {'email', 'username'}
+ACCOUNT_SIGNUP_FIELDS = ['email*', 'username*', 'password1*', 'password2*']
+ACCOUNT_EMAIL_VERIFICATION = 'none'
+ACCOUNT_LOGOUT_ON_GET = False
+ACCOUNT_RATE_LIMITS = {
+    'login_failed': '5/5m',  # Mitigação contra Força Bruta (MITRE ATT&CK T1110)
+}
+MFA_SUPPORTED_TYPES = ['totp', 'recovery_codes']
+MFA_TOTP_ISSUER = 'GateKeeper-DBF'
 
 ROOT_URLCONF = 'core.urls'
 
