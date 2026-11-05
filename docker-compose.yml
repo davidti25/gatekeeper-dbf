@@ -1,12 +1,12 @@
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:16.8-alpine
     container_name: gatekeeper-db
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-gatekeeper_db}
       POSTGRES_USER: ${POSTGRES_USER:-gatekeeper}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gatekeeper_secure_password_2026}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -28,21 +28,44 @@ services:
         condition: service_healthy
     environment:
       DEBUG: "False"
-      SECRET_KEY: ${SECRET_KEY:-generate-a-secure-secret-key-for-production-min-50-chars}
+      SECRET_KEY: ${SECRET_KEY:?defina SECRET_KEY no .env}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
-      DATABASE_URL: postgres://${POSTGRES_USER:-gatekeeper}:${POSTGRES_PASSWORD:-gatekeeper_secure_password_2026}@db:5432/${POSTGRES_DB:-gatekeeper_db}
+      DATABASE_URL: postgres://${POSTGRES_USER:-gatekeeper}:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@db:5432/${POSTGRES_DB:-gatekeeper_db}
       TIME_ZONE: America/Bahia
       ADMIN_URL: ${ADMIN_URL:-admin/}
+      TRUSTED_PROXY_COUNT: "1"
+      USE_X_FORWARDED_PROTO: "True"
+    expose:
+      - "8000"
+    networks:
+      - gatekeeper-net
+
+  caddy:
+    image: caddy:2.9.1-alpine
+    container_name: gatekeeper-caddy
+    restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
     networks:
       - gatekeeper-net
 
 volumes:
   postgres_data:
     driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
 
 networks:
   gatekeeper-net:
     driver: bridge
-

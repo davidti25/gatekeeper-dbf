@@ -23,10 +23,15 @@ docs/action-plan/
 *.cert
 *.crt
 
-# --- Banco de Dados Local (Contém dados reais de teste/operação) ---
+# --- Banco de Dados Local & Backups (Contém dados reais de teste/operação) ---
 *.sqlite3
 *.sqlite3-journal
 db.sqlite3
+backups/
+*.sql.gz
+*.dump
+*.age
+*.enc
 
 # --- Python & Django ---
 __pycache__/

@@ -203,12 +203,24 @@ CSRF_COOKIE_SECURE = env.bool("CSRF_COOKIE_SECURE", default=not DEBUG)
 SESSION_COOKIE_AGE = env.int("SESSION_COOKIE_AGE", default=28800)  # 8 horas (jornada de trabalho)
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 
-# Redirecionamento HTTPS e cabeçalhos HSTS (Fase 2.4 - CIS 5.5 / NIST)
+# Redirecionamento HTTPS e cabeçalhos HSTS (Fase 2.4 / 8.5 - CIS 5.5 / NIST)
 SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=not DEBUG)
 SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=31536000 if not DEBUG else 0)
-SECURE_HSTS_INCLUDE_SUBDOMAINS = env.bool("SECURE_HSTS_INCLUDE_SUBDOMAINS", default=not DEBUG)
-SECURE_HSTS_PRELOAD = env.bool("SECURE_HSTS_PRELOAD", default=not DEBUG)
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+# Subdomínios e Preload desligados por padrão para evitar quebras em subdomínios terceiros (Fase 8.5)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env.bool("SECURE_HSTS_INCLUDE_SUBDOMAINS", default=False)
+SECURE_HSTS_PRELOAD = env.bool("SECURE_HSTS_PRELOAD", default=False)
+
+# Confiança em Proxy Reverso e Cabeçalhos de Protocolo/IP (Fase 7.1 e 8.2)
+# USE_X_FORWARDED_PROTO só deve ser ativado quando a aplicação estiver estritamente atrás de um proxy TLS (ex: Caddy)
+USE_X_FORWARDED_PROTO = env.bool("USE_X_FORWARDED_PROTO", default=False)
+if USE_X_FORWARDED_PROTO:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+else:
+    SECURE_PROXY_SSL_HEADER = None
+
+# Contagem de Proxies Confiáveis para Sanitização de IP do Cliente (Fase 7.1)
+TRUSTED_PROXY_COUNT = env.int("TRUSTED_PROXY_COUNT", default=0)
+ALLAUTH_TRUSTED_PROXY_COUNT = TRUSTED_PROXY_COUNT
 
 
 # ==============================================================================
@@ -240,7 +252,7 @@ CSP_FORM_ACTION = ("'self'",)
 
 
 # ==============================================================================
-# Auditoria Estruturada de Eventos SOC & SIEM (Fase 2.4)
+# Auditoria Estruturada de Eventos SOC & SIEM (Fase 2.4 e 7.2 - CWE-117)
 # ==============================================================================
 LOGGING = {
     "version": 1,
@@ -250,9 +262,8 @@ LOGGING = {
             "format": "[{asctime}] [{levelname}] [{name}] {message}",
             "style": "{",
         },
-        "audit": {
-            "format": "[{asctime}] [SOC_AUDIT] [{levelname}] [{name}] {message}",
-            "style": "{",
+        "json_audit": {
+            "()": "apps.governance.logging.JSONAuditFormatter",
         },
     },
     "handlers": {
@@ -262,7 +273,7 @@ LOGGING = {
         },
         "audit_console": {
             "class": "logging.StreamHandler",
-            "formatter": "audit",
+            "formatter": "json_audit",
         },
     },
     "loggers": {

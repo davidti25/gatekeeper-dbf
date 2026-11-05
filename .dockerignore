@@ -1,36 +1,24 @@
-.git
-.gitignore
-.github
-venv
-.venv
-__pycache__
-*.pyc
-*.pyo
-*.pyd
-.Python
-env/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-.env
-db.sqlite3
-staticfiles/
-docs/privado/
-.coverage
-.coverage.*
-htmlcov/
-.pytest_cache/
-.ruff_cache/
+# ==============================================================================
+# GateKeeper-DBF - .dockerignore (Allowlist Rigorosa / Negar por Padrão)
+# CIS Controls v8 (3.3 / 4.1) - Proteção contra vazamento de segredos e dumps
+# ==============================================================================
 
+# 1. Negação universal por padrão
+*
+
+# 2. Exceções explícitas necessárias para o build e execução
+!apps/
+!core/
+!templates/
+!static/
+!manage.py
+!requirements.txt
+!requirements-dev.txt
+!tailwind.config.js
+!pyproject.toml
+
+# 3. Bloqueio de arquivos compilados e caches internos dentro das pastas permitidas
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd

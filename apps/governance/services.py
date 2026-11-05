@@ -94,11 +94,31 @@ def iniciar_offboarding(colaborador_id, responsavel, motivo="Desligamento Formal
         processo.concluido_em = agora
         processo.save()
         logger.info(
-            f"OFFBOARDING_PROCESS_INITIATED: colaborador='{colaborador.nome_completo}' operador='{responsavel.username}' motivo='{motivo}' total_itens=0 (concluido)"
+            "OFFBOARDING_PROCESS_INITIATED",
+            extra={
+                "audit": {
+                    "colaborador": colaborador.nome_completo,
+                    "colaborador_id": colaborador.pk,
+                    "operador": responsavel.username,
+                    "motivo": (motivo or "")[:500],
+                    "total_itens": 0,
+                    "status_processo": processo.status,
+                }
+            },
         )
     else:
         logger.info(
-            f"OFFBOARDING_PROCESS_INITIATED: colaborador='{colaborador.nome_completo}' operador='{responsavel.username}' motivo='{motivo}' total_itens={len(itens)}"
+            "OFFBOARDING_PROCESS_INITIATED",
+            extra={
+                "audit": {
+                    "colaborador": colaborador.nome_completo,
+                    "colaborador_id": colaborador.pk,
+                    "operador": responsavel.username,
+                    "motivo": (motivo or "")[:500],
+                    "total_itens": len(itens),
+                    "status_processo": processo.status,
+                }
+            },
         )
 
     return processo, True
@@ -161,9 +181,19 @@ def revogar_item_checklist(
         vinculo.save()
 
     logger.info(
-        f"OFFBOARDING_ITEM_REVOKED: colaborador='{item.processo.colaborador.nome_completo}' "
-        f"sistema='{vinculo.sistema.nome}' conta='{vinculo.identificador_conta}' "
-        f"status='{status}' operador='{responsavel.username}' evidencia='{evidencia}'"
+        "OFFBOARDING_ITEM_REVOKED",
+        extra={
+            "audit": {
+                "colaborador": item.processo.colaborador.nome_completo,
+                "colaborador_id": item.processo.colaborador.pk,
+                "sistema": vinculo.sistema.nome,
+                "conta": vinculo.identificador_conta,
+                "status": status,
+                "operador": responsavel.username,
+                "evidencia": (evidencia or "")[:500],
+                "observacao": (observacao or "")[:500],
+            }
+        },
     )
 
     # 6. Recalcular o status global do Processo de Offboarding
@@ -197,7 +227,15 @@ def revogar_item_checklist(
 
     if processo.status == ProcessoOffboarding.StatusOffboarding.CONCLUIDO:
         logger.info(
-            f"OFFBOARDING_PROCESS_CONCLUDED: colaborador='{colab.nome_completo}' operador='{responsavel.username}'"
+            "OFFBOARDING_PROCESS_CONCLUDED",
+            extra={
+                "audit": {
+                    "colaborador": colab.nome_completo,
+                    "colaborador_id": colab.pk,
+                    "operador": responsavel.username,
+                    "processo_id": processo.pk,
+                }
+            },
         )
 
     return item, processo

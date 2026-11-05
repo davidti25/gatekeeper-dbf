@@ -24,12 +24,12 @@ jobs:
 
     steps:
       - name: 📥 Checkout do Repositório
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
 
       - name: 🐍 Configurar Python 3.14
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
         with:
           python-version: '3.14'
           cache: 'pip'
@@ -53,7 +53,7 @@ jobs:
           pip-audit -r requirements.txt
 
       - name: 🔑 Verificação de Vazamento de Segredos (Gitleaks)
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@245d8f6d2f3c0ce2f8df19ef9d5904d9c4fb2706 # v2.3.8
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -74,3 +74,12 @@ jobs:
           CSRF_COOKIE_SECURE=True \
           python manage.py check --deploy
 
+      - name: 🐳 Verificação de Fail-Closed no Docker Compose (Fase 8.1)
+        run: |
+          # Sem variáveis de ambiente no container runner, o docker compose deve recusar a inicialização
+          if docker compose config -q >/dev/null 2>&1; then
+            echo "[-] ERRO: docker compose permitiu inicialização sem SECRET_KEY e POSTGRES_PASSWORD!" >&2
+            exit 1
+          else
+            echo "[+] Sucesso: docker compose falhou fechado conforme esperado (variáveis obrigatórias :?)."
+          fi

@@ -1,58 +1,60 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# GateKeeper-DBF - Script de Backup Criptografado de Banco de Dados (Fase 4.4)
-# CIS Controls v8 (11.1 / 11.2) - Backups Periódicos & Criptografia em Repouso
+# GateKeeper-DBF - Script de Backup com Criptografia Assimétrica (age) (Fase 4.4 / 8.4)
+# CIS Controls v8 (11.1 / 11.2 / 11.4) - Backups Criptografados com Chave Pública
 # ==============================================================================
 set -euo pipefail
 
+# Diretório padrão para backups (preferencialmente fora da árvore da aplicação)
 BACKUP_DIR="${BACKUP_DIR:-./backups}"
 TIMESTAMP="$(date +'%Y%m%d_%H%M%S')"
 RETENTION_DAYS="${RETENTION_DAYS:-30}"
-ENCRYPTION_KEY="${BACKUP_ENCRYPTION_KEY:-}"
+
+# 1. Validação Fail-Closed da Chave Pública age
+: "${BACKUP_AGE_RECIPIENT:?ERRO CRÍTICO: Defina a chave pública 'age' em BACKUP_AGE_RECIPIENT (ex: age1...)}"
+
+# 2. Verificação de dependência do binário 'age'
+if ! command -v age >/dev/null 2>&1; then
+    echo "[-] ERRO CRÍTICO: Utilitário 'age' não encontrado no PATH." >&2
+    echo "    Instale via gerenciador de pacotes (ex: 'apt install age' ou 'pacman -S age') ou baixe em https://github.com/FiloSottile/age" >&2
+    exit 1
+fi
 
 mkdir -p "${BACKUP_DIR}"
 chmod 700 "${BACKUP_DIR}"
 
-echo "[+] [$(date)] Iniciando rotina de backup do GateKeeper-DBF..."
+FINAL_FILE="${BACKUP_DIR}/gatekeeper_${TIMESTAMP}.dump.age"
 
-# 1. Determina o mecanismo de backup (PostgreSQL vs SQLite)
+echo "[+] [$(date)] Iniciando rotina de backup criptografado do GateKeeper-DBF..."
+
+# 3. Execução em Pipe sem arquivos intermediários em texto claro no disco
+# As credenciais do Postgres NUNCA devem ser passadas via argumento de CLI (visíveis no ps).
+# Utilize PGHOST, PGUSER, PGDATABASE, PGPASSWORD ou ~/.pgpass.
 if [[ -n "${DATABASE_URL:-}" && "${DATABASE_URL}" == postgres* ]]; then
-    RAW_BACKUP="${BACKUP_DIR}/dump_pg_${TIMESTAMP}.sql.gz"
-    echo "    • Modo: PostgreSQL"
-    pg_dump "${DATABASE_URL}" | gzip -9 > "${RAW_BACKUP}"
-else
-    RAW_BACKUP="${BACKUP_DIR}/dump_sqlite_${TIMESTAMP}.sqlite3.gz"
-    echo "    • Modo: SQLite (Local)"
+    echo "    • Modo: PostgreSQL (dump custom compactado em pipe com criptografia age)"
+    pg_dump --format=custom "${DATABASE_URL}" | age -r "${BACKUP_AGE_RECIPIENT}" > "${FINAL_FILE}"
+elif [[ -f "db.sqlite3" ]]; then
+    echo "    • Modo: SQLite (dump em pipe com criptografia age)"
     if command -v sqlite3 >/dev/null 2>&1; then
-        sqlite3 db.sqlite3 ".backup '${BACKUP_DIR}/temp_${TIMESTAMP}.sqlite3'"
-        gzip -9 "${BACKUP_DIR}/temp_${TIMESTAMP}.sqlite3"
-        mv "${BACKUP_DIR}/temp_${TIMESTAMP}.sqlite3.gz" "${RAW_BACKUP}"
+        sqlite3 db.sqlite3 ".dump" | age -r "${BACKUP_AGE_RECIPIENT}" > "${FINAL_FILE}"
     else
-        gzip -c db.sqlite3 > "${RAW_BACKUP}"
+        cat db.sqlite3 | age -r "${BACKUP_AGE_RECIPIENT}" > "${FINAL_FILE}"
     fi
-fi
-
-# 2. Criptografia AES-256-CBC com PBKDF2 (se chave for fornecida)
-if [[ -n "${ENCRYPTION_KEY}" ]]; then
-    ENCRYPTED_BACKUP="${RAW_BACKUP}.enc"
-    echo "    • Criptografando com AES-256-CBC..."
-    openssl enc -aes-256-cbc -salt -pbkdf2 -iter 100000 \
-        -in "${RAW_BACKUP}" \
-        -out "${ENCRYPTED_BACKUP}" \
-        -pass "pass:${ENCRYPTION_KEY}"
-    rm -f "${RAW_BACKUP}"
-    FINAL_FILE="${ENCRYPTED_BACKUP}"
 else
-    echo "    ⚠️ AVISO: BACKUP_ENCRYPTION_KEY não definida. O arquivo permanecerá compactado sem criptografia adicional."
-    FINAL_FILE="${RAW_BACKUP}"
+    echo "[-] ERRO: Nenhuma base de dados encontrada para backup." >&2
+    exit 1
 fi
 
-# 3. Permissões estritas no arquivo gerado
+# 4. Permissões estritas no arquivo gerado (apenas leitura do dono)
 chmod 600 "${FINAL_FILE}"
-echo "[+] [$(date)] Backup concluído com sucesso: ${FINAL_FILE}"
+echo "[+] [$(date)] Backup concluído com sucesso e protegido por criptografia de chave pública:"
+echo "    📄 Arquivo: ${FINAL_FILE}"
+echo "    🔐 Recipient: ${BACKUP_AGE_RECIPIENT}"
+echo ""
+echo "    ℹ️  Instrução para Restauração (SOC / DR Procedure):"
+echo "        age -d -i /caminho/chave_privada_offline.key < '${FINAL_FILE}' | pg_restore -d \$DATABASE_URL"
 
-# 4. Rotação automática de backups antigos
+# 5. Rotação automática de backups antigos
 echo "[+] Purgando backups com mais de ${RETENTION_DAYS} dias..."
-find "${BACKUP_DIR}" -type f \( -name "*.gz" -o -name "*.enc" \) -mtime "+${RETENTION_DAYS}" -delete
-echo "[+] Rotina finalizada."
-
+find "${BACKUP_DIR}" -type f -name "*.dump.age" -mtime "+${RETENTION_DAYS}" -delete
+echo "[+] Rotina finalizada com sucesso."

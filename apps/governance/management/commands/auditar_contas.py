@@ -78,7 +78,14 @@ class Command(BaseCommand):
                 u.save(update_fields=["is_active"])
                 desativados_count += 1
                 logger.warning(
-                    f"ACCOUNT_DEACTIVATED_BY_AUDIT: usuario='{u.username}' acao='DESATIVACAO_PREVENTIVA' operador='CLI_AUDITORIA'"
+                    "ACCOUNT_DEACTIVATED_BY_AUDIT",
+                    extra={
+                        "audit": {
+                            "usuario": u.username,
+                            "acao": "DESATIVACAO_PREVENTIVA",
+                            "operador": "CLI_AUDITORIA",
+                        }
+                    },
                 )
 
         self.stdout.write("-" * len(cabecalho))

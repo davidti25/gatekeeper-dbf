@@ -13,6 +13,10 @@ Cobre:
 - Fase 4 (Qualidade & DevSecOps): Anti-N+1 Queries, Bloqueio de Acessos a Desligados, Cobertura Rigorosa
 """
 
+import json
+import logging
+from pathlib import Path
+
 from allauth.mfa.models import Authenticator
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
@@ -26,6 +30,7 @@ from django.utils import timezone
 from apps.governance import urls as gov_urls
 
 from .forms import RevogacaoItemForm
+from .logging import JSONAuditFormatter
 from .models import (
     Cargo,
     Colaborador,
@@ -38,6 +43,7 @@ from .models import (
     VinculoAcesso,
 )
 from .services import iniciar_offboarding, revogar_item_checklist
+from .utils import get_client_ip
 
 User = get_user_model()
 
@@ -525,17 +531,25 @@ class Phase2PlatformAndHardeningTests(TestCase):
         self.assertTrue(settings.SECURE_CONTENT_TYPE_NOSNIFF)
 
     def test_23_trilha_auditoria_soc_sinais(self):
-        """2.4: Eventos de autenticação disparam logs estruturados para ingestão em SIEM."""
+        """2.4 / 7.2: Eventos de autenticação disparam logs estruturados em JSON para ingestão em SIEM."""
+        from .logging import JSONAuditFormatter
+
         with self.assertLogs("gatekeeper.audit", level="INFO") as cm:
             # Login com sucesso
             self.client.login(username="soc.auditor", password="ComplexPassword123!")
             # Logout
             self.client.logout()
 
-        logs_texto = "\n".join(cm.output)
-        self.assertIn("AUTH_LOGIN_SUCCESS", logs_texto)
-        self.assertIn("soc.auditor", logs_texto)
-        self.assertIn("AUTH_LOGOUT", logs_texto)
+        events = [r.getMessage() for r in cm.records]
+        self.assertIn("AUTH_LOGIN_SUCCESS", events)
+        self.assertIn("AUTH_LOGOUT", events)
+
+        # Valida estruturação JSON com JSONAuditFormatter (CWE-117)
+        formatter = JSONAuditFormatter()
+        login_record = next(r for r in cm.records if r.getMessage() == "AUTH_LOGIN_SUCCESS")
+        login_json = json.loads(formatter.format(login_record))
+        self.assertEqual(login_json["event"], "AUTH_LOGIN_SUCCESS")
+        self.assertEqual(login_json["usuario"], "soc.auditor")
 
 
 class Phase3StrongIdentityAndMFATests(TestCase):
@@ -1208,3 +1222,221 @@ class Phase6OffboardingIntegrityAndStateMachineTests(TestCase):
         self.assertTrue(resp_inconsistente.context["inconsistente"])
         self.assertContains(resp_inconsistente, "PROCESSO INCONSISTENTE — ACESSO ATIVO DETECTADO")
         self.assertContains(resp_inconsistente, "INCONSISTENTE (ACESSO ATIVO)")
+
+
+class Phase7AuditAndTelemetryTests(TestCase):
+    """
+    Testes de Segurança para Fase 7: Trilha de Auditoria Confiável (SOC / SIEM).
+
+    Cobre:
+    - 7.1: Sanitização do IP do cliente e proteção contra IP Spoofing via X-Forwarded-For (CWE-345 / CIS 8.5)
+    - 7.2: Logs estruturados em JSON e blindagem contra Log Injection via payloads multilinha (CWE-117)
+    - 7.3: Emissão de eventos estruturados no ciclo de vida de offboarding
+    """
+
+    class MockRequest:
+        def __init__(self, meta=None):
+            self.META = meta or {}
+
+    def test_71_ip_real_com_proxy_e_sem_proxy(self):
+        """7.1: get_client_ip sanitiza IP lendo proxies da direita para a esquerda e ignora XFF quando count=0."""
+        # 1. Requisição vazia ou nula
+        self.assertEqual(get_client_ip(None), "UNKNOWN")
+
+        # 2. Conexão direta sem proxy (TRUSTED_PROXY_COUNT = 0):
+        # Atacante injeta X-Forwarded-For falso, mas REMOTE_ADDR prevalece (Fail-Closed)
+        req_sem_proxy = self.MockRequest(
+            {
+                "HTTP_X_FORWARDED_FOR": "198.51.100.1, 203.0.113.55",
+                "REMOTE_ADDR": "192.0.2.1",
+            }
+        )
+        with override_settings(TRUSTED_PROXY_COUNT=0):
+            ip_calculado = get_client_ip(req_sem_proxy)
+            self.assertEqual(ip_calculado, "192.0.2.1", "Com proxy_count=0, XFF deve ser rigorosamente ignorado.")
+
+        # 3. Atrás de 1 Proxy Reverso Confiável (ex: Caddy) (TRUSTED_PROXY_COUNT = 1):
+        # O elemento mais à direita foi adicionado pelo proxy confiável
+        req_1_proxy = self.MockRequest(
+            {
+                "HTTP_X_FORWARDED_FOR": "10.0.0.99, 203.0.113.195",
+                "REMOTE_ADDR": "172.20.0.2",  # IP interno do container Caddy
+            }
+        )
+        with override_settings(TRUSTED_PROXY_COUNT=1):
+            ip_calculado = get_client_ip(req_1_proxy)
+            self.assertEqual(ip_calculado, "203.0.113.195", "Deve selecionar o IP mais à direita da cadeia.")
+
+        # 4. Atrás de 2 Proxies Confiáveis (ex: Cloudflare CDN + Caddy Local) (TRUSTED_PROXY_COUNT = 2):
+        req_2_proxies = self.MockRequest(
+            {
+                "HTTP_X_FORWARDED_FOR": "1.1.1.1, 198.51.100.22, 172.67.1.1",
+                "REMOTE_ADDR": "172.20.0.2",
+            }
+        )
+        with override_settings(TRUSTED_PROXY_COUNT=2):
+            ip_calculado = get_client_ip(req_2_proxies)
+            self.assertEqual(ip_calculado, "198.51.100.22", "Deve selecionar o segundo IP a partir da direita.")
+
+        # 5. Cadeia menor que o número de proxies confiáveis: fallback seguro para REMOTE_ADDR
+        req_cadeia_curta = self.MockRequest(
+            {
+                "HTTP_X_FORWARDED_FOR": "203.0.113.1",
+                "REMOTE_ADDR": "172.20.0.2",
+            }
+        )
+        with override_settings(TRUSTED_PROXY_COUNT=3):
+            ip_calculado = get_client_ip(req_cadeia_curta)
+            self.assertEqual(ip_calculado, "172.20.0.2")
+
+    def test_72_json_audit_formatter_anti_log_injection(self):
+        """7.2: JSONAuditFormatter previne injeção de logs (CWE-117) escapando \\r e \\n em linha única."""
+        record = logging.LogRecord(
+            name="gatekeeper.audit",
+            level=logging.WARNING,
+            pathname="services.py",
+            lineno=163,
+            msg="OFFBOARDING_ITEM_REVOKED",
+            args=(),
+            exc_info=None,
+        )
+        # Payload malicioso com quebra de linha simulando falso evento de login
+        payload_malicioso = (
+            "Chamado GLPI #999\r\nAUTH_LOGIN_SUCCESS: usuario='admin' ip='10.0.0.1'\r\nFalso encerramento"
+        )
+        record.audit = {
+            "colaborador": "Carlos Injetor",
+            "evidencia": payload_malicioso,
+            "motivo": "Linha1\nLinha2\rLinha3",
+        }
+
+        formatter = JSONAuditFormatter()
+        linha_log = formatter.format(record)
+
+        # Garantia CWE-117: Uma linha de log é SEMPRE rigorosamente uma única linha
+        self.assertEqual(linha_log.count("\n"), 0, "Log nunca deve conter quebras de linha cruas (CWE-117).")
+        self.assertEqual(linha_log.count("\r"), 0, "Log nunca deve conter retorno de carro cru.")
+
+        # Validação estrutural do JSON
+        dados = json.loads(linha_log)
+        self.assertEqual(dados["event"], "OFFBOARDING_ITEM_REVOKED")
+        self.assertEqual(dados["level"], "WARNING")
+        self.assertIn("AUTH_LOGIN_SUCCESS", dados["evidencia"])
+        self.assertIn("ts", dados)
+
+
+class Phase8InfrastructureAndDeployTests(TestCase):
+    """
+    Testes de Segurança para Fase 8: Infraestrutura & Deploy Seguro.
+
+    Cobre:
+    - 8.1: Docker Compose fail-closed sem credenciais e chaves padrão (CIS 3.3)
+    - 8.2: Proxy reverso Caddy com terminação TLS e cabeçalho X-Forwarded-Proto condicional
+    - 8.3: Allowlist no .dockerignore e exclusão de backups no .gitignore
+    - 8.4: Script de backup com criptografia assimétrica de chave pública (age)
+    - 8.5: HSTS conservador por padrão (preload e subdomínios desativados)
+    - 8.6: .env.example seguro por padrão e Dependabot configurado para GitHub Actions
+    """
+
+    def setUp(self):
+        self.base_dir = Path(__file__).resolve().parent.parent.parent
+
+    def test_81_docker_compose_fail_closed_sem_senhas_default(self):
+        """8.1: docker-compose.yml exige variáveis obrigatórias :? e não possui senhas padrão conhecidas."""
+        compose_path = self.base_dir / "docker-compose.yml"
+        self.assertTrue(compose_path.exists(), "docker-compose.yml não encontrado na raiz.")
+
+        conteudo = compose_path.read_text(encoding="utf-8")
+
+        # Exige sintaxe fail-closed :?
+        self.assertIn("${SECRET_KEY:?", conteudo)
+        self.assertIn("${POSTGRES_PASSWORD:?", conteudo)
+
+        # Proíbe senhas padrão antigas no compose
+        self.assertNotIn("gatekeeper_secure_password_2026", conteudo)
+        self.assertNotIn("generate-a-secure-secret-key-for-production-min-50-chars", conteudo)
+
+    def test_82_proxy_reverso_caddy_e_x_forwarded_proto(self):
+        """8.2: Caddyfile configurado para terminação TLS e USE_X_FORWARDED_PROTO condicional."""
+        caddyfile_path = self.base_dir / "Caddyfile"
+        self.assertTrue(caddyfile_path.exists(), "Caddyfile deve existir na raiz do projeto.")
+
+        caddy_content = caddyfile_path.read_text(encoding="utf-8")
+        self.assertIn("reverse_proxy web:8000", caddy_content)
+        self.assertIn("Strict-Transport-Security", caddy_content)
+
+        # Valida que o compose isolou o serviço web (expose 8000, sem ports exposta no host)
+        compose_content = (self.base_dir / "docker-compose.yml").read_text(encoding="utf-8")
+        self.assertIn("caddy:", compose_content)
+        self.assertIn('expose:\n      - "8000"', compose_content)
+
+        # Valida configuração do Django no core.settings
+        from django.conf import settings
+
+        # Por padrão (sem env), USE_X_FORWARDED_PROTO é False e SECURE_PROXY_SSL_HEADER é None
+        self.assertFalse(getattr(settings, "USE_X_FORWARDED_PROTO", False))
+        self.assertIsNone(getattr(settings, "SECURE_PROXY_SSL_HEADER", None))
+
+    def test_83_dockerignore_allowlist_e_gitignore_backups(self):
+        """8.3: .dockerignore adota allowlist (negação universal *) e .gitignore barra backups/dumps."""
+        dockerignore_path = self.base_dir / ".dockerignore"
+        self.assertTrue(dockerignore_path.exists())
+
+        di_lines = [
+            line.strip()
+            for line in dockerignore_path.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.startswith("#")
+        ]
+        self.assertEqual(di_lines[0], "*", ".dockerignore deve iniciar com negação universal '*'.")
+        self.assertTrue(any(line.startswith("!apps/") for line in di_lines))
+        self.assertTrue(any(line.startswith("!core/") for line in di_lines))
+
+        # .gitignore
+        gitignore_path = self.base_dir / ".gitignore"
+        gi_content = gitignore_path.read_text(encoding="utf-8")
+        self.assertIn("backups/", gi_content)
+        self.assertIn("*.sql.gz", gi_content)
+        self.assertIn("*.dump", gi_content)
+        self.assertIn("*.age", gi_content)
+
+    def test_84_script_backup_usa_age_chave_publica(self):
+        """8.4: backup_db.sh valida chave pública age, opera em pipe e não expõe senhas na linha de comando."""
+        script_path = self.base_dir / "scripts" / "backup_db.sh"
+        self.assertTrue(script_path.exists())
+
+        script_content = script_path.read_text(encoding="utf-8")
+        # Validação da variável obrigatória da chave age
+        self.assertIn("BACKUP_AGE_RECIPIENT:?", script_content)
+        # Uso do age com chave pública
+        self.assertIn("age -r", script_content)
+        # Nenhuma senha exposta na CLI do openssl
+        self.assertNotIn("-pass pass:", script_content)
+        self.assertNotIn("openssl enc", script_content)
+
+    def test_85_hsts_conservador_por_padrao(self):
+        """8.5: HSTS preload e subdomínios desativados por padrão para evitar quebra de domínios corporativos."""
+        from django.conf import settings
+
+        self.assertFalse(settings.SECURE_HSTS_PRELOAD)
+        self.assertFalse(settings.SECURE_HSTS_INCLUDE_SUBDOMAINS)
+
+    def test_86_env_example_e_dependabot_actions(self):
+        """8.6: .env.example deixa desativações de cookies comentadas e dependabot monitora github-actions."""
+        env_example_path = self.base_dir / ".env.example"
+        env_content = env_example_path.read_text(encoding="utf-8")
+
+        # As linhas perigosas devem estar devidamente comentadas (#)
+        self.assertIn("# SESSION_COOKIE_SECURE=False", env_content)
+        self.assertIn("# CSRF_COOKIE_SECURE=False", env_content)
+        self.assertIn("# SECURE_SSL_REDIRECT=False", env_content)
+
+        # Dependabot
+        dependabot_path = self.base_dir / ".github" / "dependabot.yml"
+        dependabot_content = dependabot_path.read_text(encoding="utf-8")
+        self.assertIn("github-actions", dependabot_content)
+
+        # GitHub Actions CI com fixação por SHA
+        ci_path = self.base_dir / ".github" / "workflows" / "ci.yml"
+        ci_content = ci_path.read_text(encoding="utf-8")
+        self.assertIn("actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683", ci_content)
+        self.assertIn("actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38", ci_content)
