@@ -51,9 +51,19 @@ Para garantir que o repositório no GitHub possa ser compartilhado de forma prof
 
 ---
 
-## 5. 📋 Próximas Ações Planejadas
+## 5. 📦 Ambiente de Desenvolvimento Configurado
 
-1. Estruturação do modelo de levantamento de sistemas por setor para alinhamento com as lideranças.
-2. Criação do ambiente virtual Python (`venv`) e arquivo de dependências seguras (`requirements.txt`).
-3. Inicialização do projeto base Django (`gatekeeper_core`) com configurações de segurança ativadas.
+* **Ambiente Virtual (Virtualenv):** `venv` inicializado com Python 3.14.
+* **Gerenciador de Dependências:** Criado [`requirements.txt`](file:///home/davidbf/dev/projeto/requirements.txt) com:
+  * `Django 5.1.15` (Framework web robusto com defesas OWASP nativas).
+  * `django-environ 0.14.0` (Gerenciamento seguro de segredos e variáveis de ambiente).
+* **Isolamento Confirmado:** Todas as dependências instaladas estritamente dentro de `venv/`, sem poluir o sistema operacional local.
+
+---
+
+## 6. 📋 Próximas Ações Planejadas
+
+1. Inicialização da estrutura base do projeto Django (`core`).
+2. Configuração de segurança no `settings.py` com carregamento de variáveis via `.env` (chaves secretas protegidas).
+3. Criação do app de gerenciamento de identidades (`iam` / `access_manager`) para abrigar a modelagem de Colaboradores, Funções, Localidades e Matriz de Acessos.
 

@@ -1,0 +1,10 @@
+# ==============================================================================
+# GateKeeper-DBF - Dependências do Projeto (Python & Django)
+# Desenvolvido por David BF
+# ==============================================================================
+
+# Framework Web Seguro
+Django>=5.1.0,<5.2.0
+
+# Gerenciador Seguro de Variáveis de Ambiente (.env)
+django-environ>=0.11.0
