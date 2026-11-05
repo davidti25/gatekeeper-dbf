@@ -54,7 +54,8 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      - web
+      web:
+        condition: service_healthy
     networks:
       - gatekeeper-net
 

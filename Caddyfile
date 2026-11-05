@@ -12,6 +12,11 @@
         header_up X-Real-IP {remote_host}
     }
 
+    # /healthz/ existe só para o health check interno do container (Fase 9.2).
+    # Para quem vem de fora, a rota não existe.
+    @healthz path /healthz /healthz/
+    respond @healthz 404
+
     # Compressão gzip e zstd para resposta eficiente
     encode gzip zstd
 
@@ -30,4 +35,3 @@
         format json
     }
 }
-

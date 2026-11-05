@@ -73,9 +73,9 @@ USER 10001:10001
 
 EXPOSE 8000
 
-# Healthcheck nativo para monitoramento de integridade pelo Docker / Kubernetes
+# Healthcheck nativo (Fase 9.2): /healthz/ verifica o banco e não depende de ALLOWED_HOSTS nem de HTTPS
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:8000/login/ || exit 1
+    CMD curl -fsS http://127.0.0.1:8000/healthz/ || exit 1
 
 # Execução em produção via Gunicorn com timeout e logs estruturados
 CMD ["gunicorn", "core.wsgi:application", \
@@ -84,4 +84,3 @@ CMD ["gunicorn", "core.wsgi:application", \
      "--timeout", "60", \
      "--access-logfile", "-", \
      "--error-logfile", "-"]
-

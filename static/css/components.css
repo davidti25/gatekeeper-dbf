@@ -1,0 +1,66 @@
+/* ==============================================================================
+ * GateKeeper-DBF - Componentes compatíveis com CSP estrita (Fase 9.1)
+ *
+ * A política `style-src 'self'` bloqueia atributos style="...". Por isso a largura
+ * das barras de progresso vem do próprio elemento nativo <progress value max>,
+ * estilizado aqui, sem nenhum estilo inline e sem afrouxar a CSP.
+ * Cores equivalentes ao Tailwind: slate-800 #1e293b, slate-900 #0f172a,
+ * sky-500 #0ea5e9, emerald-500 #10b981.
+ * ============================================================================== */
+
+.gk-progress {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 0.375rem; /* h-1.5 */
+  border: 0;
+  border-radius: 9999px;
+  overflow: hidden;
+  background-color: #1e293b; /* trilho (Firefox) */
+  color: #0ea5e9;
+}
+
+/* Chromium / WebKit */
+.gk-progress::-webkit-progress-bar {
+  background-color: #1e293b;
+  border-radius: 9999px;
+}
+.gk-progress::-webkit-progress-value {
+  background-color: #0ea5e9;
+  border-radius: 9999px;
+  transition: width 0.5s ease;
+}
+
+/* Firefox */
+.gk-progress::-moz-progress-bar {
+  background-color: #0ea5e9;
+  border-radius: 9999px;
+}
+
+/* Tamanhos */
+.gk-progress--md {
+  height: 0.5rem; /* h-2 */
+}
+.gk-progress--lg {
+  height: 0.75rem; /* h-3 */
+}
+
+/* Trilho mais escuro (cartões com fundo slate-900) */
+.gk-progress--dark-track {
+  background-color: #0f172a;
+}
+.gk-progress--dark-track::-webkit-progress-bar {
+  background-color: #0f172a;
+}
+
+/* Processo 100% resolvido */
+.gk-progress--done {
+  color: #10b981;
+}
+.gk-progress--done::-webkit-progress-value {
+  background-color: #10b981;
+}
+.gk-progress--done::-moz-progress-bar {
+  background-color: #10b981;
+}

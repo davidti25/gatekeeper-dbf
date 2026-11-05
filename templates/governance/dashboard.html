@@ -190,9 +190,7 @@
                                     <span>{{ processo.total_revogados }}/{{ processo.total_itens }}</span>
                                     <span>{{ processo.percentual_concluido }}%</span>
                                 </div>
-                                <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                                    <div class="h-1.5 rounded-full {% if processo.percentual_concluido == 100 %}bg-emerald-500{% else %}bg-sky-500{% endif %}" style="width: {{ processo.percentual_concluido }}%"></div>
-                                </div>
+                                <progress class="gk-progress {% if processo.percentual_concluido == 100 %}gk-progress--done{% endif %}" value="{{ processo.percentual_concluido }}" max="100" aria-label="Progresso do offboarding: {{ processo.percentual_concluido }}%">{{ processo.percentual_concluido }}%</progress>
                             </div>
                             <a href="{% url 'offboarding_detail' processo.pk %}" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition" title="Abrir Checklist">
                                 <i data-lucide="chevron-right" class="w-4 h-4"></i>

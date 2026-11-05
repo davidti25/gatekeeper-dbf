@@ -15,13 +15,18 @@ Cobre:
 
 import json
 import logging
+import re
 from pathlib import Path
+from unittest import mock
 
 from allauth.mfa.models import Authenticator
+from django.conf import settings
+from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
+from django.db import OperationalError
 from django.db.models import ProtectedError
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
@@ -1440,3 +1445,167 @@ class Phase8InfrastructureAndDeployTests(TestCase):
         ci_content = ci_path.read_text(encoding="utf-8")
         self.assertIn("actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683", ci_content)
         self.assertIn("actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38", ci_content)
+
+
+class Phase9FrontendCleanupAndRegressionTests(TestCase):
+    """
+    Testes de Regressão para Fase 9: Front-end, Limpeza & Testes de Regressão (Plano v2).
+
+    Cobre:
+    - 9.1: Nenhum style="" ou handler on*= inline em templates e admin (CSP style-src 'self' preservada);
+           barras de progresso renderizadas com <progress> nativo; selos do admin por classe CSS.
+    - 9.2: Configurações CSP_* legadas removidas; /healthz/ responde antes da validação de host
+           e do redirecionamento HTTPS, falha com 503 sem banco e fica oculto no Caddy.
+    - Template de PR com checklist de segurança.
+    """
+
+    def setUp(self):
+        self.base_dir = Path(__file__).resolve().parent.parent.parent
+
+        self.user_auditor = User.objects.create_user(
+            username="auditor.fase9", email="auditor.fase9@empresa.com.br", password="ComplexPassword123!"
+        )
+        self.user_auditor.groups.add(Group.objects.get(name="Auditor"))
+        responsavel = User.objects.create_user(
+            username="analista.fase9", email="analista.fase9@empresa.com.br", password="ComplexPassword123!"
+        )
+
+        depto = Departamento.objects.create(nome="Infraestrutura Fase 9", sigla="INF9")
+        cargo = Cargo.objects.create(nome="Analista de Redes", departamento=depto)
+        localidade = Localidade.objects.create(nome="Salvador F9", codigo="SSA-09", cidade="Salvador", estado="BA")
+        self.colaborador = Colaborador.objects.create(
+            nome_completo="Paula Progresso",
+            matricula="MAT-F9-01",
+            email_corporativo="paula.progresso@empresa.com.br",
+            departamento=depto,
+            cargo=cargo,
+            localidade=localidade,
+            data_admissao=timezone.localdate(),
+            status=Colaborador.StatusColaborador.ATIVO,
+        )
+        self.sistema = Sistema.objects.create(
+            nome="Firewall Fase 9",
+            tipo=Sistema.TipoSistema.NETWORK,
+            criticidade=Sistema.Criticidade.CRITICA,
+        )
+        vinculo = VinculoAcesso.objects.create(
+            colaborador=self.colaborador,
+            sistema=self.sistema,
+            identificador_conta="paula.fw",
+            concedido_por=responsavel,
+        )
+        self.processo = ProcessoOffboarding.objects.create(
+            colaborador=self.colaborador,
+            responsavel_ti=responsavel,
+            status=ProcessoOffboarding.StatusOffboarding.INICIADO,
+        )
+        ItemChecklistOffboarding.objects.create(processo=self.processo, vinculo_acesso=vinculo)
+
+    # ------------------------------------------------------------------ 9.1
+    def test_91_templates_sem_style_nem_handlers_inline(self):
+        """9.1 (catraca): nenhum template usa style="" ou on*="" — ambos seriam bloqueados pela CSP."""
+        padrao_style = re.compile(r"\sstyle\s*=", re.IGNORECASE)
+        padrao_handler = re.compile(r"\son[a-z]+\s*=", re.IGNORECASE)
+        violacoes = []
+        for template in (self.base_dir / "templates").rglob("*.html"):
+            conteudo = template.read_text(encoding="utf-8")
+            if padrao_style.search(conteudo) or padrao_handler.search(conteudo):
+                violacoes.append(str(template.relative_to(self.base_dir)))
+        self.assertEqual(violacoes, [], "Templates com estilo/JS inline (bloqueados pela CSP)")
+
+    def test_91_paginas_renderizam_progress_nativo_sem_style(self):
+        """9.1: as quatro telas com barra de progresso usam <progress> e carregam components.css."""
+        self.client.force_login(self.user_auditor)
+        rotas = [
+            reverse("dashboard"),
+            reverse("offboarding_list"),
+            reverse("offboarding_detail", kwargs={"pk": self.processo.pk}),
+            reverse("colaborador_detail", kwargs={"pk": self.colaborador.pk}),
+        ]
+        for rota in rotas:
+            resp = self.client.get(rota)
+            self.assertEqual(resp.status_code, 200, rota)
+            conteudo = resp.content.decode()
+            self.assertIn('<progress class="gk-progress', conteudo, rota)
+            self.assertIn('max="100"', conteudo, rota)
+            self.assertNotIn("style=", conteudo, rota)
+            self.assertIn("css/components.", conteudo, rota)
+
+    def test_91_admin_selos_e_progresso_por_classe_css(self):
+        """9.1: selos e progresso do admin não geram style="" e o admin carrega css/admin.css."""
+        sistema_admin = admin.site._registry[Sistema]
+        colaborador_admin = admin.site._registry[Colaborador]
+        vinculo_admin = admin.site._registry[VinculoAcesso]
+        processo_admin = admin.site._registry[ProcessoOffboarding]
+
+        html_gerado = [
+            sistema_admin.exibir_criticidade(self.sistema),
+            colaborador_admin.exibir_status(self.colaborador),
+            vinculo_admin.exibir_status(VinculoAcesso.objects.first()),
+            processo_admin.exibir_status(self.processo),
+            processo_admin.exibir_progresso(self.processo),
+        ]
+        for html in html_gerado:
+            self.assertNotIn("style=", html)
+
+        self.assertIn('class="gk-badge gk-badge--vermelho"', html_gerado[0])  # criticidade CRITICA
+        self.assertIn('class="gk-badge gk-badge--verde"', html_gerado[1])  # colaborador ATIVO
+        self.assertIn('<progress class="gk-admin-progress"', html_gerado[4])
+
+        for model_admin in (sistema_admin, colaborador_admin, vinculo_admin, processo_admin):
+            self.assertIn("/static/css/admin.", str(model_admin.media))
+
+    # ------------------------------------------------------------------ 9.2
+    def test_92_configuracoes_csp_legadas_removidas(self):
+        """9.2: nenhuma configuração CSP_* do django-csp 3.x (sem efeito no 4.x) permanece."""
+        legadas = [nome for nome in dir(settings) if nome.startswith("CSP_")]
+        self.assertEqual(legadas, [])
+        self.assertIn("DIRECTIVES", settings.CONTENT_SECURITY_POLICY)
+
+    @override_settings(ALLOWED_HOSTS=["gatekeeper.empresa.com.br"], SECURE_SSL_REDIRECT=True)
+    def test_92_healthz_responde_sem_host_permitido_e_sem_https(self):
+        """9.2: /healthz/ responde 200 ao curl interno do container (Host 127.0.0.1, HTTP puro)."""
+        resp = self.client.get("/healthz/", HTTP_HOST="127.0.0.1:8000")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.content, b"ok")
+        self.assertEqual(resp["Cache-Control"], "no-store")
+
+        # O desvio vale só para /healthz/: as demais rotas continuam validando o host.
+        resp_login = self.client.get("/login/", HTTP_HOST="127.0.0.1:8000")
+        self.assertEqual(resp_login.status_code, 400)
+
+    def test_92_healthz_falha_com_503_quando_banco_indisponivel(self):
+        """9.2: sem banco, /healthz/ responde 503 sem expor detalhes do erro."""
+        with mock.patch("apps.governance.middleware.connection") as conexao:
+            conexao.ensure_connection.side_effect = OperationalError("senha=segredo host=db")
+            with self.assertLogs("gatekeeper.audit", level="ERROR"):
+                resp = self.client.get("/healthz/")
+        self.assertEqual(resp.status_code, 503)
+        self.assertEqual(resp.content, b"unavailable")
+        self.assertNotIn(b"segredo", resp.content)
+
+    def test_92_healthz_so_aceita_get_e_head(self):
+        """9.2: outros métodos seguem a pilha normal (login obrigatório), sem atalho."""
+        resp = self.client.post("/healthz/")
+        self.assertNotEqual(resp.status_code, 200)
+
+    def test_92_docker_healthcheck_e_caddy(self):
+        """9.2: Dockerfile usa /healthz/, Caddy oculta a rota externamente e espera o web saudável."""
+        dockerfile = (self.base_dir / "Dockerfile").read_text(encoding="utf-8")
+        self.assertIn("http://127.0.0.1:8000/healthz/", dockerfile)
+        self.assertNotIn("localhost:8000/login/", dockerfile)
+
+        caddyfile = (self.base_dir / "Caddyfile").read_text(encoding="utf-8")
+        self.assertIn("respond @healthz 404", caddyfile)
+
+        compose = (self.base_dir / "docker-compose.yml").read_text(encoding="utf-8")
+        self.assertIn("web:\n        condition: service_healthy", compose)
+
+    # ------------------------------------------------------- template de PR
+    def test_93_template_pr_com_checklist_de_seguranca(self):
+        """Template de PR lembra as regras de negar por padrão a cada mudança."""
+        template = self.base_dir / ".github" / "pull_request_template.md"
+        self.assertTrue(template.exists())
+        conteudo = template.read_text(encoding="utf-8")
+        for termo in ("rotas_protegidas", "TRANSICOES_PERMITIDAS", 'extra={"audit"', "style=", ".dockerignore", ":?"):
+            self.assertIn(termo, conteudo)

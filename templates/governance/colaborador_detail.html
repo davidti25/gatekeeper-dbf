@@ -78,9 +78,7 @@
                         <span class="text-xs font-bold text-slate-300 uppercase tracking-wider">Processo de Offboarding</span>
                         <span class="text-xs font-mono font-bold text-sky-400">{{ offboarding.percentual_concluido }}%</span>
                     </div>
-                    <div class="w-full bg-slate-900 rounded-full h-2 overflow-hidden">
-                        <div class="h-2 rounded-full {% if offboarding.percentual_concluido == 100 %}bg-emerald-500{% else %}bg-sky-500{% endif %}" style="width: {{ offboarding.percentual_concluido }}%"></div>
-                    </div>
+                    <progress class="gk-progress gk-progress--md gk-progress--dark-track {% if offboarding.percentual_concluido == 100 %}gk-progress--done{% endif %}" value="{{ offboarding.percentual_concluido }}" max="100" aria-label="Progresso do offboarding: {{ offboarding.percentual_concluido }}%">{{ offboarding.percentual_concluido }}%</progress>
                     <p class="text-xs text-slate-400">
                         {{ offboarding.total_revogados }} de {{ offboarding.total_itens }} acessos revogados.
                     </p>

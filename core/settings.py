@@ -62,6 +62,9 @@ AUTHENTICATION_BACKENDS = [
 ]
 
 MIDDLEWARE = [
+    # Health check /healthz/ (Fase 9.2): primeiro da pilha, responde antes da validação de
+    # host, do redirecionamento HTTPS, da sessão e da autenticação. Não expõe dados.
+    "apps.governance.middleware.HealthCheckMiddleware",
     "django.middleware.security.SecurityMiddleware",
     # Servidor estático seguro com compressão e hash (Fase 2.3)
     "whitenoise.middleware.WhiteNoiseMiddleware",
@@ -239,16 +242,6 @@ CONTENT_SECURITY_POLICY = {
         "form-action": ["'self'"],
     }
 }
-
-# Compatibilidade legada django-csp 3.x
-CSP_DEFAULT_SRC = ("'self'",)
-CSP_SCRIPT_SRC = ("'self'",)
-CSP_STYLE_SRC = ("'self'",)
-CSP_IMG_SRC = ("'self'", "data:")
-CSP_FONT_SRC = ("'self'",)
-CSP_CONNECT_SRC = ("'self'",)
-CSP_FRAME_ANCESTORS = ("'none'",)
-CSP_FORM_ACTION = ("'self'",)
 
 
 # ==============================================================================

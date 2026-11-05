@@ -22,6 +22,15 @@ from .models import (
     VinculoAcesso,
 )
 
+# Fase 9.1: selos e progresso por classe CSS (static/css/admin.css), sem style="".
+# A CSP `style-src 'self'` bloqueia atributos style inline; classes mantêm a política rígida.
+ADMIN_MEDIA_CSS = {"all": ("css/admin.css",)}
+
+
+def _badge(rotulo, cor):
+    """Selo colorido. `cor` vem sempre de um mapa fixo no código, nunca de dado do usuário."""
+    return format_html('<span class="gk-badge gk-badge--{}">{}</span>', cor, rotulo)
+
 
 @admin.register(Localidade)
 class LocalidadeAdmin(admin.ModelAdmin):
@@ -55,6 +64,9 @@ class PerfilAcessoInline(admin.TabularInline):
 
 @admin.register(Sistema)
 class SistemaAdmin(SimpleHistoryAdmin):
+    class Media:
+        css = ADMIN_MEDIA_CSS
+
     list_display = (
         "nome",
         "tipo",
@@ -72,17 +84,13 @@ class SistemaAdmin(SimpleHistoryAdmin):
     @admin.display(description="Criticidade")
     def exibir_criticidade(self, obj):
         cores = {
-            Sistema.Criticidade.CRITICA: "#b91c1c",
-            Sistema.Criticidade.ALTA: "#ea580c",
-            Sistema.Criticidade.MEDIA: "#ca8a04",
-            Sistema.Criticidade.BAIXA: "#15803d",
+            Sistema.Criticidade.CRITICA: "vermelho",
+            Sistema.Criticidade.ALTA: "laranja",
+            Sistema.Criticidade.MEDIA: "ambar",
+            Sistema.Criticidade.BAIXA: "verde",
         }
-        cor = cores.get(obj.criticidade, "#4b5563")
-        return format_html(
-            '<span style="background-color: {}; color: white; padding: 3px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">{}</span>',
-            cor,
-            obj.get_criticidade_display(),
-        )
+        cor = cores.get(obj.criticidade, "neutro")
+        return _badge(obj.get_criticidade_display(), cor)
 
 
 @admin.register(PerfilAcesso)
@@ -101,6 +109,9 @@ class VinculoAcessoInline(admin.TabularInline):
 
 @admin.register(Colaborador)
 class ColaboradorAdmin(SimpleHistoryAdmin):
+    class Media:
+        css = ADMIN_MEDIA_CSS
+
     list_display = (
         "nome_completo",
         "matricula",
@@ -123,21 +134,20 @@ class ColaboradorAdmin(SimpleHistoryAdmin):
     @admin.display(description="Status")
     def exibir_status(self, obj):
         cores = {
-            Colaborador.StatusColaborador.ATIVO: "#15803d",
-            Colaborador.StatusColaborador.FERIAS: "#0284c7",
-            Colaborador.StatusColaborador.AFASTADO: "#d97706",
-            Colaborador.StatusColaborador.DESLIGADO: "#dc2626",
+            Colaborador.StatusColaborador.ATIVO: "verde",
+            Colaborador.StatusColaborador.FERIAS: "azul",
+            Colaborador.StatusColaborador.AFASTADO: "ambar",
+            Colaborador.StatusColaborador.DESLIGADO: "vermelho",
         }
-        cor = cores.get(obj.status, "#6b7280")
-        return format_html(
-            '<span style="background-color: {}; color: white; padding: 3px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">{}</span>',
-            cor,
-            obj.get_status_display(),
-        )
+        cor = cores.get(obj.status, "neutro")
+        return _badge(obj.get_status_display(), cor)
 
 
 @admin.register(VinculoAcesso)
 class VinculoAcessoAdmin(SimpleHistoryAdmin):
+    class Media:
+        css = ADMIN_MEDIA_CSS
+
     list_display = (
         "colaborador",
         "sistema",
@@ -158,16 +168,12 @@ class VinculoAcessoAdmin(SimpleHistoryAdmin):
     @admin.display(description="Status")
     def exibir_status(self, obj):
         cores = {
-            VinculoAcesso.StatusAcesso.ATIVO: "#15803d",
-            VinculoAcesso.StatusAcesso.REVOGADO: "#dc2626",
-            VinculoAcesso.StatusAcesso.BLOQUEADO: "#d97706",
+            VinculoAcesso.StatusAcesso.ATIVO: "verde",
+            VinculoAcesso.StatusAcesso.REVOGADO: "vermelho",
+            VinculoAcesso.StatusAcesso.BLOQUEADO: "ambar",
         }
-        cor = cores.get(obj.status, "#6b7280")
-        return format_html(
-            '<span style="background-color: {}; color: white; padding: 3px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">{}</span>',
-            cor,
-            obj.get_status_display(),
-        )
+        cor = cores.get(obj.status, "neutro")
+        return _badge(obj.get_status_display(), cor)
 
 
 class ItemChecklistOffboardingInline(admin.TabularInline):
@@ -178,6 +184,9 @@ class ItemChecklistOffboardingInline(admin.TabularInline):
 
 @admin.register(ProcessoOffboarding)
 class ProcessoOffboardingAdmin(SimpleHistoryAdmin):
+    class Media:
+        css = ADMIN_MEDIA_CSS
+
     list_display = ("colaborador", "exibir_progresso", "exibir_status", "responsavel_ti", "iniciado_em", "concluido_em")
     list_filter = ("status", "responsavel_ti")
     search_fields = ("colaborador__nome_completo", "observacoes")
@@ -190,16 +199,13 @@ class ProcessoOffboardingAdmin(SimpleHistoryAdmin):
     @admin.display(description="Progresso")
     def exibir_progresso(self, obj):
         pct = obj.percentual_concluido
-        cor_barra = "#15803d" if pct == 100 else "#2563eb"
+        classe = "gk-admin-progress gk-admin-progress--done" if pct == 100 else "gk-admin-progress"
         return format_html(
-            """
-            <div style="width: 120px; background-color: #e5e7eb; border-radius: 4px; overflow: hidden; height: 16px; display: inline-block; vertical-align: middle;">
-                <div style="width: {}%; background-color: {}; height: 100%;"></div>
-            </div>
-            <span style="font-weight: bold; margin-left: 6px; font-size: 11px;">{}% ({}/{})</span>
-            """,
+            '<progress class="{}" value="{}" max="100" aria-label="{}%"></progress>'
+            '<span class="gk-admin-progress-label">{}% ({}/{})</span>',
+            classe,
             pct,
-            cor_barra,
+            pct,
             pct,
             obj.total_revogados,
             obj.total_itens,
@@ -208,16 +214,12 @@ class ProcessoOffboardingAdmin(SimpleHistoryAdmin):
     @admin.display(description="Status")
     def exibir_status(self, obj):
         cores = {
-            ProcessoOffboarding.StatusOffboarding.CONCLUIDO: "#15803d",
-            ProcessoOffboarding.StatusOffboarding.INICIADO: "#0284c7",
-            ProcessoOffboarding.StatusOffboarding.PENDENTE: "#dc2626",
+            ProcessoOffboarding.StatusOffboarding.CONCLUIDO: "verde",
+            ProcessoOffboarding.StatusOffboarding.INICIADO: "azul",
+            ProcessoOffboarding.StatusOffboarding.PENDENTE: "vermelho",
         }
-        cor = cores.get(obj.status, "#6b7280")
-        return format_html(
-            '<span style="background-color: {}; color: white; padding: 3px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">{}</span>',
-            cor,
-            obj.get_status_display(),
-        )
+        cor = cores.get(obj.status, "neutro")
+        return _badge(obj.get_status_display(), cor)
 
 
 @admin.register(ItemChecklistOffboarding)

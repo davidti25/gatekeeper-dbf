@@ -1,0 +1,77 @@
+/* ==============================================================================
+ * GateKeeper-DBF - Selos e progresso do Django Admin (Fase 9.1)
+ *
+ * Substitui os atributos style="..." gerados por format_html no admin.py,
+ * que eram bloqueados pela CSP `style-src 'self'`.
+ * ============================================================================== */
+
+.gk-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: bold;
+  color: #ffffff;
+  background-color: #6b7280; /* neutro (status desconhecido) */
+  white-space: nowrap;
+}
+
+/* Verde: ativo / concluído / criticidade baixa */
+.gk-badge--verde {
+  background-color: #15803d;
+}
+/* Azul: férias / iniciado */
+.gk-badge--azul {
+  background-color: #0284c7;
+}
+/* Âmbar: afastado / bloqueado / criticidade média */
+.gk-badge--ambar {
+  background-color: #b45309;
+}
+/* Laranja: criticidade alta */
+.gk-badge--laranja {
+  background-color: #c2410c;
+}
+/* Vermelho: desligado / revogado / pendente / criticidade crítica */
+.gk-badge--vermelho {
+  background-color: #b91c1c;
+}
+
+/* Barra de progresso do processo de offboarding */
+.gk-admin-progress {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 120px;
+  height: 16px;
+  border: 0;
+  border-radius: 4px;
+  overflow: hidden;
+  vertical-align: middle;
+  background-color: #e5e7eb;
+  color: #2563eb;
+}
+.gk-admin-progress::-webkit-progress-bar {
+  background-color: #e5e7eb;
+  border-radius: 4px;
+}
+.gk-admin-progress::-webkit-progress-value {
+  background-color: #2563eb;
+}
+.gk-admin-progress::-moz-progress-bar {
+  background-color: #2563eb;
+}
+.gk-admin-progress--done {
+  color: #15803d;
+}
+.gk-admin-progress--done::-webkit-progress-value {
+  background-color: #15803d;
+}
+.gk-admin-progress--done::-moz-progress-bar {
+  background-color: #15803d;
+}
+
+.gk-admin-progress-label {
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: bold;
+}
