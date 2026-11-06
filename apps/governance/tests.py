@@ -2232,3 +2232,198 @@ class PreparacaoRepositorioPublicoTests(TestCase):
         self.assertIn('TIME_ZONE = env("TIME_ZONE"', (base / "core/settings.py").read_text(encoding="utf-8"))
         self.assertIn("TIME_ZONE: ${TIME_ZONE:-", (base / "docker-compose.yml").read_text(encoding="utf-8"))
         self.assertIn("TIME_ZONE=", (base / ".env.example").read_text(encoding="utf-8"))
+
+
+class MatrizAutorizacaoTests(TestCase):
+    """
+    Matriz de autorização com usuário logado (todos os perfis contra todas as telas de escrita).
+
+    O teste-catraca (test_52) prova que um usuário *sem grupo* não lê nada. Esta matriz prova o
+    passo seguinte: quem *tem* acesso não grava além da própria permissão — foi exatamente esse tipo
+    de falha (Auditor gravando pelo histórico do admin) que passou por três rodadas de análise.
+    Os laços percorrem o registro do admin e as rotas da aplicação, então modelos e telas novos
+    entram na matriz automaticamente.
+    """
+
+    # Rotas da aplicação que gravam dados -> permissão exigida. Toda rota fora daqui deve recusar POST.
+    ROTAS_ESCRITA = {
+        "iniciar_offboarding": "governance.iniciar_offboarding",
+        "revogar_item_offboarding": "governance.revogar_item_offboarding",
+    }
+    # Modelos que só mudam pelo services.py: admin nega gravação a todos, inclusive superusuário (Fase 10.1).
+    SOMENTE_LEITURA_NO_ADMIN = {"governance.ProcessoOffboarding", "governance.ItemChecklistOffboarding"}
+
+    def setUp(self):
+        Phase10To12IntegrityAndDeployTests.setUp(self)
+        PerfilAcesso.objects.create(sistema=self.sis, nome="Desenvolvedor")
+        self.perfis = {
+            "Auditor": self._usuario_staff("auditor.matriz", "Auditor"),
+            "Analista TI": self._usuario_staff("analista.matriz", "Analista TI"),
+            "Gestor SecOps": self._usuario_staff("gestor.matriz", "Gestor SecOps"),
+        }
+
+    def _usuario_staff(self, username, grupo):
+        user = User.objects.create_user(
+            username=username, email=f"{username}@empresa.com.br", password="ComplexPassword123!", is_staff=True
+        )
+        user.groups.add(Group.objects.get(name=grupo))
+        # Com TOTP cadastrado, o RequireMFAMiddleware não redireciona e o teste atinge a camada de permissão
+        Authenticator.objects.create(user=user, type=Authenticator.Type.TOTP, data={"secret": "JBSWY3DPEHPK3PXP"})
+        return User.objects.get(pk=user.pk)  # recarrega para não usar cache de permissões
+
+    def _estado_do_banco(self):
+        from django.apps import apps
+
+        modelos = set(admin.site._registry) | set(apps.get_app_config("governance").get_models())
+        estado = {m._meta.label: list(m._default_manager.order_by("pk").values()) for m in modelos}
+        for linha in estado["auth.User"]:
+            linha.pop("last_login")  # muda a cada force_login; não é gravação feita pela tela testada
+        return estado
+
+    def _post_negado(self, user, url, dados, contexto):
+        self.client.force_login(user)
+        antes = self._estado_do_banco()
+        resp = self.client.post(url, dados)
+        self.assertEqual(resp.status_code, 403, f"{contexto}: esperado 403, recebeu {resp.status_code}")
+        self.assertEqual(antes, self._estado_do_banco(), f"{contexto}: o banco foi alterado apesar do 403")
+
+    def test_admin_nega_gravacao_sem_permissao_em_todos_os_modelos(self):
+        """Para cada modelo do admin, perfil e ação (add/change/delete): sem a permissão Django -> 403 e banco intacto."""
+        from django.contrib.auth import get_permission_codename
+
+        combinacoes_testadas = 0
+        for model in admin.site._registry:
+            opts = model._meta
+            obj = model._default_manager.first()
+            if opts.app_label == "governance":
+                self.assertIsNotNone(obj, f"Crie uma instância de {opts.label} no setUp para testar change/delete")
+            acoes = [("add", reverse(f"admin:{opts.app_label}_{opts.model_name}_add"), {})]
+            if obj is not None:
+                acoes += [
+                    ("change", reverse(f"admin:{opts.app_label}_{opts.model_name}_change", args=[obj.pk]), {}),
+                    (
+                        "delete",
+                        reverse(f"admin:{opts.app_label}_{opts.model_name}_delete", args=[obj.pk]),
+                        {"post": "yes"},
+                    ),
+                ]
+            for nome_perfil, user in self.perfis.items():
+                for acao, url, dados in acoes:
+                    if user.has_perm(f"{opts.app_label}.{get_permission_codename(acao, opts)}"):
+                        continue  # permitido por desenho; regras extras ficam nos testes específicos
+                    with self.subTest(modelo=opts.label, perfil=nome_perfil, acao=acao):
+                        self._post_negado(user, url, dados, f"{nome_perfil} {acao} {opts.label}")
+                        combinacoes_testadas += 1
+
+        # Sanidade: a matriz realmente exercitou casos (inclui tentativa de escalar privilégio em auth.User/Group)
+        self.assertGreater(combinacoes_testadas, 50)
+
+        # Controle positivo: com permissão, a requisição passa da camada de autorização (não é 403 por outro motivo)
+        self.client.force_login(self.perfis["Gestor SecOps"])
+        url = reverse("admin:governance_colaborador_change", args=[self.colab.pk])
+        self.assertEqual(self.client.get(url).status_code, 200)
+
+    def test_admin_offboarding_somente_leitura_para_todos(self):
+        """Processo e checklist de offboarding: add/change/delete negados a todos os perfis e ao superusuário."""
+        from django.apps import apps
+
+        usuarios = {**self.perfis, "superusuário": self.superuser}
+        for label in self.SOMENTE_LEITURA_NO_ADMIN:
+            model = apps.get_model(label)
+            opts = model._meta
+            obj = model._default_manager.first()
+            acoes = [
+                ("add", reverse(f"admin:{opts.app_label}_{opts.model_name}_add"), {}),
+                ("change", reverse(f"admin:{opts.app_label}_{opts.model_name}_change", args=[obj.pk]), {}),
+                ("delete", reverse(f"admin:{opts.app_label}_{opts.model_name}_delete", args=[obj.pk]), {"post": "yes"}),
+            ]
+            for nome, user in usuarios.items():
+                for acao, url, dados in acoes:
+                    with self.subTest(modelo=label, usuario=nome, acao=acao):
+                        self._post_negado(user, url, dados, f"{nome} {acao} {label}")
+
+    def test_historico_do_admin_nega_gravacao_em_todos_os_modelos(self):
+        """Tela de versão do histórico: POST negado em todo admin com histórico, para todos os perfis e o superusuário."""
+        from simple_history.admin import SimpleHistoryAdmin
+
+        usuarios = {**self.perfis, "superusuário": self.superuser}
+        modelos_com_historico = 0
+        for model, model_admin in admin.site._registry.items():
+            if not isinstance(model_admin, SimpleHistoryAdmin):
+                continue
+            modelos_com_historico += 1
+            opts = model._meta
+            obj = model._default_manager.first()
+            versao = obj.history.earliest()
+            url = reverse(f"admin:{opts.app_label}_{opts.model_name}_simple_history", args=[obj.pk, versao.history_id])
+            for nome, user in usuarios.items():
+                with self.subTest(modelo=opts.label, usuario=nome):
+                    self._post_negado(user, url, {}, f"{nome} reverter histórico de {opts.label}")
+        self.assertEqual(modelos_com_historico, 5)
+
+    def test_aplicacao_escrita_exige_permissao_e_leitura_recusa_post(self):
+        """Telas de escrita: sem a permissão específica -> 403 e banco intacto. Telas de leitura: POST recusado (405)."""
+        kwargs_por_rota = {
+            "dashboard": {},
+            "colaborador_list": {},
+            "colaborador_detail": {"pk": self.colab.pk},
+            "iniciar_offboarding": {"pk": self.colab.pk},
+            "sistema_list": {},
+            "matriz_acesso": {},
+            "offboarding_list": {},
+            "offboarding_detail": {"pk": self.processo.pk},
+            "revogar_item_offboarding": {"pk": self.processo.pk, "item_id": self.item.pk},
+            "offboarding_relatorio": {"pk": self.processo.pk},
+        }
+        self.assertEqual(
+            {p.name for p in gov_urls.urlpatterns},
+            set(kwargs_por_rota),
+            "Rota nova em governance/urls.py: registre-a aqui e, se gravar dados, em ROTAS_ESCRITA",
+        )
+        dados_revogacao = {
+            "status": ItemChecklistOffboarding.StatusItem.REVOGADO,
+            "evidencia_revogacao": "Conta desativada no console; chamado INC-2026-0042 anexado.",
+        }
+
+        # 1. Escrita sem a permissão específica -> 403, para cada perfil
+        for nome_rota, perm in self.ROTAS_ESCRITA.items():
+            url = reverse(nome_rota, kwargs=kwargs_por_rota[nome_rota])
+            for nome_perfil, user in self.perfis.items():
+                if user.has_perm(perm):
+                    continue
+                with self.subTest(rota=nome_rota, perfil=nome_perfil):
+                    self._post_negado(user, url, dados_revogacao, f"{nome_perfil} POST {nome_rota}")
+
+        # 2. Leitura nunca aceita POST, nem do perfil com mais permissões
+        gestor = self.perfis["Gestor SecOps"]
+        self.client.force_login(gestor)
+        for nome_rota, kwargs in kwargs_por_rota.items():
+            if nome_rota in self.ROTAS_ESCRITA:
+                continue
+            with self.subTest(rota_leitura=nome_rota):
+                antes = self._estado_do_banco()
+                resp = self.client.post(reverse(nome_rota, kwargs=kwargs), {})
+                self.assertEqual(resp.status_code, 405, f"Rota de leitura '{nome_rota}' aceitou POST")
+                self.assertEqual(antes, self._estado_do_banco())
+
+        # 3. "Não Aplicável" exige permissão própria, mesmo para quem pode revogar (Analista TI)
+        analista = self.perfis["Analista TI"]
+        self.assertTrue(analista.has_perm("governance.revogar_item_offboarding"))
+        self.assertFalse(analista.has_perm("governance.marcar_nao_aplicavel"))
+        self.client.force_login(analista)
+        url_revogar = reverse("revogar_item_offboarding", kwargs=kwargs_por_rota["revogar_item_offboarding"])
+        self.client.post(
+            url_revogar,
+            {
+                "status": ItemChecklistOffboarding.StatusItem.NAO_APLICAVEL,
+                "observacao": "Sistema descontinuado antes do desligamento do colaborador.",
+            },
+        )
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, ItemChecklistOffboarding.StatusItem.PENDENTE)
+
+        # 4. Controle positivo: com a permissão, a revogação é gravada e o responsável é quem fez a requisição
+        self.client.post(url_revogar, dados_revogacao)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, ItemChecklistOffboarding.StatusItem.REVOGADO)
+        self.assertEqual(self.item.responsavel_revogacao, analista)

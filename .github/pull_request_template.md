@@ -14,6 +14,7 @@ Marque cada item ou explique por que não se aplica.
 
 ### Acesso e autorização
 - [ ] Nova view tem `PermissionRequiredMixin` / `@permission_required` **e** foi registrada no dicionário `rotas_protegidas` do teste-catraca (`test_52_catraca_todas_rotas_governance_exigem_permissao`).
+- [ ] Nova view que grava dados foi registrada em `ROTAS_ESCRITA` da `MatrizAutorizacaoTests` (as de leitura devem recusar POST).
 - [ ] Rota pública nova (com `@login_not_required`) é realmente necessária e não expõe dados.
 - [ ] Ações que alteram dados usam POST com `{% csrf_token %}` e registram `request.user` como responsável.
 
