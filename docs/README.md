@@ -7,7 +7,7 @@ Bem-vindo à Biblioteca de Documentação do **GateKeeper-DBF**. Este repositór
 ## 🗂️ Estrutura de Diretórios
 
 * **`biblioteca/`**: Contém o diário de bordo cronológico das fases de desenvolvimento, organizado por mês e identificado por data (`YYYY-MM-DD-*`).
-* **`action-plan/`**: Planos de ação com correções priorizadas (segurança, qualidade e conformidade), identificados por data (`YYYY-MM-DD-*`).
+* **`action-plan/`** *(local, ignorado pelo Git)*: Planos de ação com as correções em andamento. Só chegam ao repositório como Diário Oficial na `biblioteca/`, depois de corrigidas.
 * **`modelos/`**: Modelos e templates padronizados (ex: formulários de levantamento de sistemas, playbooks de onboarding/offboarding).
 * **`privado/`** *(Ignorado pelo Git / Protegido pela LGPD)*: Pasta local exclusiva para armazenamento de dados brutos e informações sigilosas da organização. Nunca é enviada ao repositório remoto.
 
