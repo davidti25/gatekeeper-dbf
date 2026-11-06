@@ -23,6 +23,7 @@ from .models import (
     PerfilAcesso,
     ProcessoOffboarding,
     Sistema,
+    SolicitacaoAcesso,
     VinculoAcesso,
 )
 
@@ -77,6 +78,7 @@ class CargoAdmin(admin.ModelAdmin):
     list_display = ("nome", "departamento", "ativo", "criado_em")
     list_filter = ("ativo", "departamento")
     search_fields = ("nome", "departamento__nome", "departamento__sigla")
+    filter_horizontal = ("perfis_padrao",)
     ordering = ("departamento__nome", "nome")
 
 
@@ -367,3 +369,34 @@ class ItemRevisaoAdmin(SomenteLeituraAdminMixin, HistoricoSomenteLeituraAdmin):
         }
         cor = cores.get(obj.decisao, "neutro")
         return _badge(obj.get_decisao_display(), cor)
+
+
+@admin.register(SolicitacaoAcesso)
+class SolicitacaoAcessoAdmin(SomenteLeituraAdminMixin, HistoricoSomenteLeituraAdmin):
+    class Media:
+        css = ADMIN_MEDIA_CSS
+
+    list_display = (
+        "id",
+        "colaborador",
+        "sistema",
+        "perfil_acesso",
+        "exibir_status",
+        "solicitado_por",
+        "solicitado_em",
+        "aprovado_por",
+        "concedido_por",
+    )
+    list_filter = ("status", "sistema")
+    search_fields = ("colaborador__nome_completo", "sistema__nome", "chamado", "identificador_conta")
+
+    @admin.display(description="Status")
+    def exibir_status(self, obj):
+        cores = {
+            SolicitacaoAcesso.StatusSolicitacao.CONCEDIDO: "verde",
+            SolicitacaoAcesso.StatusSolicitacao.APROVADO: "azul",
+            SolicitacaoAcesso.StatusSolicitacao.PENDENTE_APROVACAO: "ambar",
+            SolicitacaoAcesso.StatusSolicitacao.REJEITADO: "vermelho",
+        }
+        cor = cores.get(obj.status, "neutro")
+        return _badge(obj.get_status_display(), cor)

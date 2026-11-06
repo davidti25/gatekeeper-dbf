@@ -64,6 +64,13 @@ class Cargo(models.Model):
         Departamento, on_delete=models.PROTECT, related_name="cargos", verbose_name="Departamento Vinculado"
     )
     descricao = models.TextField(blank=True, verbose_name="Atribuições e Responsabilidades")
+    perfis_padrao = models.ManyToManyField(
+        "PerfilAcesso",
+        blank=True,
+        related_name="cargos_padrao",
+        verbose_name="Perfis de Acesso Padrão (Pacote por Cargo)",
+        help_text="Acessos pré-aprovados padrão para colaboradores admitidos nesta função",
+    )
     ativo = models.BooleanField(default=True, verbose_name="Ativo")
     criado_em = models.DateTimeField(auto_now_add=True, verbose_name="Criado em")
     atualizado_em = models.DateTimeField(auto_now=True, verbose_name="Atualizado em")
@@ -463,6 +470,41 @@ class ProcessoOffboarding(models.Model):
             return 100
         return int((self.total_resolvidos / total) * 100)
 
+    @property
+    def tempo_ate_revogacao_horas(self):
+        """
+        Fase 16.1: Calcula o tempo em horas entre a data de desligamento do colaborador
+        e a conclusão do offboarding (ou última revogação de acesso).
+        """
+        if self.status != self.StatusOffboarding.CONCLUIDO or not self.colaborador.data_desligamento:
+            return None
+
+        import datetime
+
+        tz = timezone.get_current_timezone()
+        dt_desligamento = timezone.make_aware(
+            datetime.datetime.combine(self.colaborador.data_desligamento, datetime.time.min), tz
+        )
+
+        ultima_revogacao = (
+            self.itens_checklist.filter(status=ItemChecklistOffboarding.StatusItem.REVOGADO)
+            .order_by("-data_revogacao")
+            .values_list("data_revogacao", flat=True)
+            .first()
+        )
+        dt_fim = ultima_revogacao or self.concluido_em or timezone.now()
+
+        diff = dt_fim - dt_desligamento
+        horas = diff.total_seconds() / 3600.0
+        return max(0.0, round(horas, 1))
+
+    @property
+    def acima_do_sla(self):
+        """Indica se o processo excedeu o prazo-alvo de revogação (padrão 24h)."""
+        sla_horas = getattr(settings, "OFFBOARDING_SLA_HORAS", 24)
+        horas = self.tempo_ate_revogacao_horas
+        return horas is not None and horas > sla_horas
+
 
 class ItemChecklistOffboarding(models.Model):
     """
@@ -698,3 +740,111 @@ class ItemRevisao(models.Model):
 
     def __str__(self):
         return f"{self.campanha.nome} - {self.vinculo.colaborador.nome_completo} ({self.vinculo.sistema.nome}) [{self.get_decisao_display()}]"
+
+
+class SolicitacaoAcesso(models.Model):
+    """
+    Fase 17.1: Fluxo formal de concessão de acessos (Solicitação -> Aprovação -> Concessão).
+    O VinculoAcesso só nasce na concessão pela TI, com evidência e segregação estrita.
+    """
+
+    class StatusSolicitacao(models.TextChoices):
+        PENDENTE_APROVACAO = "PENDENTE_APROVACAO", "Pendente de Aprovação"
+        APROVADO = "APROVADO", "Aprovado"
+        REJEITADO = "REJEITADO", "Rejeitado"
+        CONCEDIDO = "CONCEDIDO", "Concedido pela TI"
+
+    colaborador = models.ForeignKey(
+        Colaborador,
+        on_delete=models.PROTECT,
+        related_name="solicitacoes_acesso",
+        verbose_name="Colaborador",
+    )
+    sistema = models.ForeignKey(
+        Sistema,
+        on_delete=models.PROTECT,
+        related_name="solicitacoes_acesso",
+        verbose_name="Sistema Solicitado",
+    )
+    perfil_acesso = models.ForeignKey(
+        "PerfilAcesso",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="solicitacoes_acesso",
+        verbose_name="Perfil / Privilégio",
+    )
+    identificador_conta = models.CharField(
+        max_length=150,
+        verbose_name="Usuário / Conta Sugerida",
+        help_text="Login a ser provisionado no sistema",
+    )
+    justificativa = models.TextField(
+        verbose_name="Justificativa de Negócio",
+        help_text="Obrigatória (mín. 20 caracteres) detalhando a necessidade do acesso",
+    )
+    chamado = models.CharField(
+        max_length=100,
+        verbose_name="ID do Chamado / Ticket ITSM",
+        help_text="Número do ticket de requisição",
+    )
+    status = models.CharField(
+        max_length=25,
+        choices=StatusSolicitacao.choices,
+        default=StatusSolicitacao.PENDENTE_APROVACAO,
+        verbose_name="Status da Solicitação",
+    )
+    solicitado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="solicitacoes_criadas",
+        verbose_name="Solicitado por",
+    )
+    solicitado_em = models.DateTimeField(default=timezone.now, verbose_name="Solicitado em")
+    aprovado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="solicitacoes_aprovadas",
+        verbose_name="Aprovado por",
+    )
+    aprovado_em = models.DateTimeField(null=True, blank=True, verbose_name="Aprovado em")
+    motivo_rejeicao = models.TextField(blank=True, verbose_name="Motivo da Rejeição")
+    concedido_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="solicitacoes_concedidas_ti",
+        verbose_name="Concedido por (TI)",
+    )
+    concedido_em = models.DateTimeField(null=True, blank=True, verbose_name="Concedido em")
+    evidencia_concessao = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="Evidência da Concessão (TI)",
+        help_text="Comprovação técnica da criação/ativação da conta",
+    )
+    vinculo = models.ForeignKey(
+        VinculoAcesso,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="solicitacao_origem",
+        verbose_name="Vínculo Concedido",
+    )
+    history = HistoricalRecords()
+
+    class Meta:
+        verbose_name = "Solicitação de Acesso"
+        verbose_name_plural = "Solicitações de Acesso"
+        ordering = ["-solicitado_em"]
+        permissions = [
+            ("solicitar_acesso", "Pode solicitar novos acessos corporativos"),
+            ("aprovar_acesso", "Pode aprovar solicitações de acesso"),
+            ("conceder_acesso", "Pode conceder e provisionar acessos aprovados"),
+        ]
+
+    def __str__(self):
+        return f"Solicitação #{self.pk}: {self.colaborador.nome_completo} -> {self.sistema.nome} [{self.get_status_display()}]"

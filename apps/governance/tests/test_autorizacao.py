@@ -332,6 +332,7 @@ class MatrizAutorizacaoTests(TestCase):
         "governance.ItemChecklistOffboarding",
         "governance.CampanhaRevisao",
         "governance.ItemRevisao",
+        "governance.SolicitacaoAcesso",
     }
 
     def setUp(self):
@@ -440,7 +441,7 @@ class MatrizAutorizacaoTests(TestCase):
             for nome, user in usuarios.items():
                 with self.subTest(modelo=opts.label, usuario=nome):
                     self._post_negado(user, url, {}, f"{nome} reverter histórico de {opts.label}")
-        self.assertEqual(modelos_com_historico, 7)
+        self.assertEqual(modelos_com_historico, 8)
 
     def test_aplicacao_escrita_exige_permissao_e_leitura_recusa_post(self):
         """Telas de escrita: sem a permissão específica -> 403 e banco intacto. Telas de leitura: POST recusado (405)."""

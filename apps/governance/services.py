@@ -16,11 +16,14 @@ from django.utils import timezone
 
 from .models import (
     CampanhaRevisao,
+    Cargo,
     Colaborador,
+    Departamento,
     ItemChecklistOffboarding,
     ItemRevisao,
     ProcessoOffboarding,
     Sistema,
+    SolicitacaoAcesso,
     VinculoAcesso,
 )
 
@@ -599,3 +602,272 @@ def encerrar_campanha(campanha_id, usuario, forcar=False):
     )
 
     return campanha
+
+
+# ==============================================================================
+# Fase 17: Ciclo de Vida Completo (Entrada, Concessão e Mudança de Cargo)
+# ==============================================================================
+
+
+@transaction.atomic
+def solicitar_acesso(
+    colaborador_id,
+    sistema_id,
+    identificador_conta,
+    justificativa,
+    chamado,
+    usuario,
+    perfil_id=None,
+):
+    """
+    Fase 17.1: Registra solicitação formal de novo acesso para um colaborador.
+    Valida justificativa mínima de negócio e segregação (não solicita para si mesmo sem perfil).
+    """
+    colaborador = Colaborador.objects.get(pk=colaborador_id)
+    sistema = Sistema.objects.get(pk=sistema_id)
+
+    justificativa = (justificativa or "").strip()
+    if len(justificativa) < 20:
+        raise ValidationError("Justificativa de negócio é obrigatória (mínimo de 20 caracteres).")
+
+    chamado = (chamado or "").strip()
+    if not chamado:
+        raise ValidationError("Identificador do chamado/ticket ITSM é obrigatório.")
+
+    colab_user = getattr(colaborador, "usuario", None)
+    if colab_user and colab_user.id == usuario.id:
+        # Se for o próprio colaborador solicitando, exige aprovação estrita do gestor/dono
+        pass
+
+    solicitacao = SolicitacaoAcesso.objects.create(
+        colaborador=colaborador,
+        sistema=sistema,
+        perfil_acesso_id=perfil_id,
+        identificador_conta=identificador_conta.strip(),
+        justificativa=justificativa,
+        chamado=chamado,
+        status=SolicitacaoAcesso.StatusSolicitacao.PENDENTE_APROVACAO,
+        solicitado_por=usuario,
+    )
+
+    logger.info(
+        "ACCESS_REQUEST_CREATED",
+        extra={
+            "audit": {
+                "solicitacao_id": solicitacao.id,
+                "colaborador": colaborador.nome_completo,
+                "sistema": sistema.nome,
+                "solicitante": usuario.username,
+                "chamado": chamado,
+            }
+        },
+    )
+
+    return solicitacao
+
+
+@transaction.atomic
+def aprovar_solicitacao(solicitacao_id, usuario, aprovado=True, motivo_rejeicao=""):
+    """
+    Fase 17.1: Aprovação de solicitação de acesso com segregação de funções estrita.
+    - Quem solicita NUNCA aprova o próprio pedido.
+    - Sistema CRÍTICO exige aprovação do dono do sistema (ou Gestor SecOps se dono ausente).
+    """
+    solicitacao = (
+        SolicitacaoAcesso.objects.select_for_update()
+        .select_related("sistema", "solicitado_por", "colaborador")
+        .get(pk=solicitacao_id)
+    )
+
+    if solicitacao.status != SolicitacaoAcesso.StatusSolicitacao.PENDENTE_APROVACAO:
+        raise ValidationError(
+            f"Esta solicitação não está pendente de aprovação (status atual: {solicitacao.get_status_display()})."
+        )
+
+    # Segregação de funções: quem solicita não aprova
+    if solicitacao.solicitado_por_id == usuario.id:
+        raise PermissionDenied("Segregação de funções: o solicitante não pode aprovar o próprio pedido de acesso.")
+
+    # Sistemas críticos exigem validação do dono do sistema ou de um Gestor SecOps
+    if solicitacao.sistema.criticidade == Sistema.Criticidade.CRITICA:
+        dono = solicitacao.sistema.dono
+        is_gestor_secops = usuario.groups.filter(name="Gestor SecOps").exists() or usuario.is_superuser
+        if dono and dono.id != usuario.id and not is_gestor_secops:
+            raise PermissionDenied(
+                f"Acesso a sistema CRÍTICO ({solicitacao.sistema.nome}) exige aprovação expressa do dono do sistema ({dono.username}) ou de Gestor SecOps."
+            )
+
+    agora = timezone.now()
+    if aprovado:
+        solicitacao.status = SolicitacaoAcesso.StatusSolicitacao.APROVADO
+        solicitacao.aprovado_por = usuario
+        solicitacao.aprovado_em = agora
+        solicitacao.save()
+
+        logger.info(
+            "ACCESS_REQUEST_APPROVED",
+            extra={
+                "audit": {
+                    "solicitacao_id": solicitacao.id,
+                    "colaborador": solicitacao.colaborador.nome_completo,
+                    "sistema": solicitacao.sistema.nome,
+                    "aprovador": usuario.username,
+                }
+            },
+        )
+    else:
+        motivo = (motivo_rejeicao or "").strip()
+        if len(motivo) < 10:
+            raise ValidationError("Motivo da rejeição é obrigatório (mínimo de 10 caracteres).")
+
+        solicitacao.status = SolicitacaoAcesso.StatusSolicitacao.REJEITADO
+        solicitacao.aprovado_por = usuario
+        solicitacao.aprovado_em = agora
+        solicitacao.motivo_rejeicao = motivo
+        solicitacao.save()
+
+        logger.info(
+            "ACCESS_REQUEST_REJECTED",
+            extra={
+                "audit": {
+                    "solicitacao_id": solicitacao.id,
+                    "colaborador": solicitacao.colaborador.nome_completo,
+                    "sistema": solicitacao.sistema.nome,
+                    "aprovador": usuario.username,
+                    "motivo": motivo,
+                }
+            },
+        )
+
+    return solicitacao
+
+
+@transaction.atomic
+def conceder_acesso(solicitacao_id, evidencia, usuario, identificador_conta=None):
+    """
+    Fase 17.1: Concessão e provisionamento efetivo do acesso pela equipe técnica (TI).
+    Gera o VinculoAcesso com data de concessão, operador responsável e rastreabilidade total.
+    """
+    solicitacao = (
+        SolicitacaoAcesso.objects.select_for_update()
+        .select_related("colaborador", "sistema", "perfil_acesso")
+        .get(pk=solicitacao_id)
+    )
+
+    if solicitacao.status != SolicitacaoAcesso.StatusSolicitacao.APROVADO:
+        raise ValidationError(
+            f"Apenas solicitações com status 'Aprovado' podem ser concedidas (status atual: {solicitacao.get_status_display()})."
+        )
+
+    evidencia = (evidencia or "").strip()
+    if not evidencia:
+        raise ValidationError("Evidência técnica da concessão do acesso é obrigatória.")
+
+    agora = timezone.now()
+    conta = (identificador_conta or solicitacao.identificador_conta).strip()
+
+    # Criação do vínculo real auditável
+    vinculo = VinculoAcesso.objects.create(
+        colaborador=solicitacao.colaborador,
+        sistema=solicitacao.sistema,
+        perfil_acesso=solicitacao.perfil_acesso,
+        identificador_conta=conta,
+        status=VinculoAcesso.StatusAcesso.ATIVO,
+        data_concessao=agora,
+        concedido_por=usuario,
+        justificativa=f"Solicitação #{solicitacao.pk} - {solicitacao.chamado}: {solicitacao.justificativa}",
+    )
+
+    solicitacao.status = SolicitacaoAcesso.StatusSolicitacao.CONCEDIDO
+    solicitacao.concedido_por = usuario
+    solicitacao.concedido_em = agora
+    solicitacao.evidencia_concessao = evidencia
+    solicitacao.vinculo = vinculo
+    solicitacao.save()
+
+    logger.info(
+        "ACCESS_GRANTED",
+        extra={
+            "audit": {
+                "solicitacao_id": solicitacao.id,
+                "vinculo_id": vinculo.id,
+                "colaborador": solicitacao.colaborador.nome_completo,
+                "sistema": solicitacao.sistema.nome,
+                "conta": conta,
+                "operador_ti": usuario.username,
+                "evidencia": evidencia,
+            }
+        },
+    )
+
+    return vinculo
+
+
+@transaction.atomic
+def alterar_cargo_colaborador(
+    colaborador_id,
+    novo_cargo_id,
+    novo_departamento_id,
+    usuario,
+    novo_gestor_id=None,
+):
+    """
+    Fase 17.3: Alteração de cargo/departamento com disparo automático de Mini-Revisão (CIS 5.3 / privilege creep).
+    Reaproveita a mecânica da Fase 15 para validar os acessos atuais com o novo gestor.
+    """
+    colaborador = Colaborador.objects.select_for_update().get(pk=colaborador_id)
+    novo_cargo = Cargo.objects.get(pk=novo_cargo_id)
+    novo_depto = Departamento.objects.get(pk=novo_departamento_id)
+
+    cargo_anterior = colaborador.cargo.nome
+    depto_anterior = colaborador.departamento.sigla
+
+    colaborador.cargo = novo_cargo
+    colaborador.departamento = novo_depto
+    if novo_gestor_id is not None:
+        colaborador.gestor_imediato_id = novo_gestor_id
+    colaborador.save()
+
+    # Mini-Revisão: se possuir acessos ativos, abre campanha específica
+    vinculos_ativos = list(colaborador.vinculos_acesso.filter(status=VinculoAcesso.StatusAcesso.ATIVO))
+    mini_campanha = None
+
+    if vinculos_ativos:
+        prazo_revisao = timezone.localdate() + timezone.timedelta(days=15)
+        mini_campanha = CampanhaRevisao.objects.create(
+            nome=f"Mini-Revisão de Mudança de Cargo: {colaborador.nome_completo}",
+            descricao=f"Reavaliação de acessos decorrente da transferência de {cargo_anterior} ({depto_anterior}) para {novo_cargo.nome} ({novo_depto.sigla}).",
+            prazo=prazo_revisao,
+            criada_por=usuario,
+            status=CampanhaRevisao.StatusCampanha.ABERTA,
+        )
+
+        itens_mini = []
+        for v in vinculos_ativos:
+            revisor = determinar_revisor(v) or usuario
+            itens_mini.append(
+                ItemRevisao(
+                    campanha=mini_campanha,
+                    vinculo=v,
+                    revisor=revisor,
+                    decisao=ItemRevisao.DecisaoRevisao.PENDENTE,
+                )
+            )
+        ItemRevisao.objects.bulk_create(itens_mini)
+
+        logger.info(
+            "ROLE_CHANGE_MINI_REVIEW",
+            extra={
+                "audit": {
+                    "colaborador": colaborador.nome_completo,
+                    "colaborador_id": colaborador.id,
+                    "cargo_anterior": cargo_anterior,
+                    "novo_cargo": novo_cargo.nome,
+                    "mini_campanha_id": mini_campanha.id,
+                    "total_acessos_em_revisao": len(itens_mini),
+                    "operador": usuario.username,
+                }
+            },
+        )
+
+    return colaborador, mini_campanha

@@ -43,4 +43,3 @@ class Migration(migrations.Migration):
         ),
         migrations.RunPython(assign_nao_aplicavel_permission_to_gestor, reverse_code=migrations.RunPython.noop),
     ]
-

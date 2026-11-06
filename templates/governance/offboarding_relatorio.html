@@ -60,6 +60,13 @@
                             <span class="font-bold text-amber-600">{{ processo.get_status_display }}</span>
                         {% endif %}
                     </p>
+                    {% if tempo_ate_revogacao is not None %}
+                    <p><strong>Tempo até Revogação:</strong>
+                        <span class="{% if acima_do_sla %}font-bold text-rose-600{% else %}text-emerald-700{% endif %}">
+                            {{ tempo_ate_revogacao }}h (Alvo SLA: {{ sla_horas }}h)
+                        </span>
+                    </p>
+                    {% endif %}
                 </div>
             </div>
 

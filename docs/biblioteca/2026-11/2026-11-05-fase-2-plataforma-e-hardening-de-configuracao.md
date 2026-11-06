@@ -122,4 +122,3 @@ Destroying test database for alias 'default'...
 
 Avançar para a **Fase 3 — Identidade Forte**:
 * **3.1:** `django-allauth` com módulo MFA (TOTP, WebAuthn/Passkeys, códigos de recuperação), proteção contra ataques de força bruta com `ACCOUNT_RATE_LIMITS` e autenticação reforçada no Django Admin.
-

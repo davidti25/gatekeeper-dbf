@@ -141,6 +141,39 @@
 
     </div>
 
+    <!-- Indicador de Auditoria e SLA de Revogação (Fase 16.1) -->
+    <div class="gk-panel p-4 flex flex-wrap items-center justify-between gap-4 text-xs">
+        <div class="flex items-center space-x-3">
+            <div class="p-2 rounded-lg bg-sky-500/10 text-sky-400">
+                <i data-lucide="timer" class="w-5 h-5"></i>
+            </div>
+            <div>
+                <span class="font-bold text-white block">Tempo até Revogação (Últimos 90 dias)</span>
+                <span class="text-slate-400">Métrica de conformidade CIS Controls 5.3 e LGPD Art. 46</span>
+            </div>
+        </div>
+        <div class="flex items-center space-x-6">
+            <div>
+                <span class="text-slate-400 block text-[11px] uppercase font-semibold">Mediana</span>
+                <span class="text-base font-bold font-mono text-white">{{ tempo_revogacao_mediana }}h</span>
+            </div>
+            <div>
+                <span class="text-slate-400 block text-[11px] uppercase font-semibold">Pior Caso</span>
+                <span class="text-base font-bold font-mono {% if tempo_revogacao_pior_caso > offboarding_sla_horas %}text-rose-400{% else %}text-white{% endif %}">{{ tempo_revogacao_pior_caso }}h</span>
+            </div>
+            <div>
+                <span class="text-slate-400 block text-[11px] uppercase font-semibold">Alvo SLA</span>
+                <span class="text-base font-bold font-mono text-sky-400">{{ offboarding_sla_horas }}h</span>
+            </div>
+            {% if processos_acima_sla > 0 %}
+            <div>
+                <span class="text-rose-400 block text-[11px] uppercase font-semibold">Acima do SLA</span>
+                <span class="text-base font-bold font-mono text-rose-400">{{ processos_acima_sla }} processo(s)</span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
     <!-- Main Two-Column Layout -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 

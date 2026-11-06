@@ -60,4 +60,3 @@
   * `apps/governance/views.py`: **88%**
   * `apps/governance/forms.py`: **87%**
   * **Média do módulo:** **92%** (meta: $\ge 85\%$).
-

@@ -1,8 +1,8 @@
 # 🔎 Diário Oficial de Segurança — Fase 7: Trilha de Auditoria Confiável (SOC / SIEM)
 
-**Data:** 05/11/2026  
-**Status:** Concluído e Validado  
-**Frameworks:** CIS Controls v8 (8.2, 8.5) | MITRE ATT&CK (T1070, T1110) | CWE-117 | CWE-345  
+**Data:** 05/11/2026
+**Status:** Concluído e Validado
+**Frameworks:** CIS Controls v8 (8.2, 8.5) | MITRE ATT&CK (T1070, T1110) | CWE-117 | CWE-345
 **Módulos Afetados:** [`apps/governance/utils.py`](../../apps/governance/utils.py), [`apps/governance/logging.py`](../../apps/governance/logging.py), [`apps/governance/signals.py`](../../apps/governance/signals.py), [`apps/governance/services.py`](../../apps/governance/services.py), [`core/settings.py`](../../core/settings.py)
 
 ---
@@ -45,4 +45,3 @@ Implementado em [`apps/governance/logging.py`](../../apps/governance/logging.py)
 - `test_71_ip_real_com_proxy_e_sem_proxy`: Valida isolamento com 0, 1 e 2 proxies, além de requisições nulas ou cadeias curtas.
 - `test_72_json_audit_formatter_anti_log_injection`: Injeta payload malicioso com `\r\n` simulando ataque de Log Injection e comprova que a saída contém exatamente 0 quebras de linha (`\n` e `\r`).
 - `test_23_trilha_auditoria_soc_sinais`: Validação ponta a ponta dos sinais de login/logout em formato JSON estruturado.
-

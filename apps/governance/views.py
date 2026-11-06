@@ -11,6 +11,7 @@ Contempla:
 
 import logging
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import permission_required
@@ -83,6 +84,34 @@ class DashboardView(PermissionRequiredMixin, TemplateView):
         context["offboardings_concluidos"] = ProcessoOffboarding.objects.filter(
             status=ProcessoOffboarding.StatusOffboarding.CONCLUIDO
         ).count()
+
+        # Fase 16.1: Tempo até a revogação nos últimos 90 dias
+        limite_90d = timezone.now() - timezone.timedelta(days=90)
+        procs_concluidos = list(
+            ProcessoOffboarding.objects.filter(
+                status=ProcessoOffboarding.StatusOffboarding.CONCLUIDO,
+                concluido_em__gte=limite_90d,
+            ).select_related("colaborador")
+        )
+
+        tempos = [p.tempo_ate_revogacao_horas for p in procs_concluidos if p.tempo_ate_revogacao_horas is not None]
+        if tempos:
+            tempos_ordenados = sorted(tempos)
+            n = len(tempos_ordenados)
+            mediana = (
+                tempos_ordenados[n // 2]
+                if n % 2 != 0
+                else round((tempos_ordenados[n // 2 - 1] + tempos_ordenados[n // 2]) / 2, 1)
+            )
+            pior_caso = max(tempos_ordenados)
+        else:
+            mediana = 0.0
+            pior_caso = 0.0
+
+        context["tempo_revogacao_mediana"] = mediana
+        context["tempo_revogacao_pior_caso"] = pior_caso
+        context["processos_acima_sla"] = sum(1 for p in procs_concluidos if p.acima_do_sla)
+        context["offboarding_sla_horas"] = getattr(settings, "OFFBOARDING_SLA_HORAS", 24)
 
         # Alertas de Risco de Segurança (SOC / Threat Hunting)
         # 1. Contas Órfãs Críticas: Colaborador com status DESLIGADO, mas ainda com acessos ATIVOS
@@ -349,6 +378,10 @@ class OffboardingRelatorioView(PermissionRequiredMixin, DetailView):
         context["inconsistente"] = self.object.itens_checklist.filter(
             vinculo_acesso__status=VinculoAcesso.StatusAcesso.ATIVO
         ).exists()
+        # Fase 16.1: Indicador de auditoria SLA e tempo até revogação
+        context["tempo_ate_revogacao"] = self.object.tempo_ate_revogacao_horas
+        context["acima_do_sla"] = self.object.acima_do_sla
+        context["sla_horas"] = getattr(settings, "OFFBOARDING_SLA_HORAS", 24)
         return context
 
 

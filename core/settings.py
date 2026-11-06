@@ -300,3 +300,14 @@ LOGGING = {
         },
     },
 }
+
+# ==============================================================================
+# Fase 16: Operação, SLAs e Avisos por E-mail
+# ==============================================================================
+OFFBOARDING_SLA_HORAS = env.int("OFFBOARDING_SLA_HORAS", default=24)
+GATEKEEPER_BASE_URL = env("GATEKEEPER_BASE_URL", default="https://gatekeeper.empresa.com.br")
+
+# Configuração de E-mail (Fase 16.2: opcional via EMAIL_URL)
+EMAIL_CONFIG = env.email_url("EMAIL_URL", default="dummymail://")
+vars().update(EMAIL_CONFIG)
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="gatekeeper@empresa.com.br")

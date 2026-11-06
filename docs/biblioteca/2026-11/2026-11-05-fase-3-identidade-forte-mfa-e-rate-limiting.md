@@ -114,4 +114,3 @@ Destroying test database for alias 'default'...
 > * **Defesa em Profundidade:** No roteador de borda (MikroTik RouterOS ou pfSense), podemos criar regras de firewall RAW ou filter com `connection-limit` ou `dst-limit` para barrar flooding de pacotes SYN (ataques L4).
 > * **No entanto**, ataques de força bruta lentos (*Slow & Low* ou *Password Spraying*) usam conexões legítimas HTTP e proxies rotativos. O firewall de borda não sabe se uma credencial é válida ou inválida.
 > * É o **Rate Limiting da aplicação (L7)** que correlaciona o `AUTH_LOGIN_FAILED` por conta ou por bloco IP, impedindo que credenciais sejam quebradas sem saturar a rede. No SIEM (Wazuh/Elastic), a regra correlaciona múltiplos logs `AUTH_LOGIN_FAILED` para gerar o alerta de incidente (MITRE T1110) e despachar bloqueio automatizado na `address-list` do firewall via webhook ou API.
-

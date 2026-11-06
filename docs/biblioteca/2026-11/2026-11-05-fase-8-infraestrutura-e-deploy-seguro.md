@@ -1,8 +1,8 @@
 # 🏗️ Diário Oficial de Segurança — Fase 8: Infraestrutura & Deploy Seguro
 
-**Data:** 05/11/2026  
-**Status:** Concluído e Validado  
-**Frameworks:** CIS Controls v8 (3.3, 4.1, 5.5, 11.1, 11.2, 11.4) | MITRE ATT&CK (T1552, T1565) | OWASP A05:2021  
+**Data:** 05/11/2026
+**Status:** Concluído e Validado
+**Frameworks:** CIS Controls v8 (3.3, 4.1, 5.5, 11.1, 11.2, 11.4) | MITRE ATT&CK (T1552, T1565) | OWASP A05:2021
 **Módulos Afetados:** [`docker-compose.yml`](../../docker-compose.yml), [`Caddyfile`](../../Caddyfile), [`.dockerignore`](../../.dockerignore), [`.gitignore`](../../.gitignore), [`scripts/backup_db.sh`](../../scripts/backup_db.sh), [`core/settings.py`](../../core/settings.py), [`.env.example`](../../.env.example), [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml), [`.github/dependabot.yml`](../../.github/dependabot.yml)
 
 ---
@@ -70,4 +70,3 @@ A infraestrutura e os scripts de apoio foram endurecidos com base no princípio 
 - `test_84_script_backup_usa_age_chave_publica`: Valida chave assimétrica sem intermediários no disco.
 - `test_85_hsts_conservador_por_padrao`: Comprova defaults seguros de HSTS.
 - `test_86_env_example_e_dependabot_actions`: Comprova integridade de documentação e CI/CD.
-

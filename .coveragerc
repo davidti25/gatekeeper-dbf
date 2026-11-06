@@ -9,4 +9,3 @@ omit =
 show_missing = True
 skip_covered = True
 fail_under = 85
-

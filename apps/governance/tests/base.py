@@ -17,6 +17,7 @@ from apps.governance.models import (
     Localidade,
     ProcessoOffboarding,
     Sistema,
+    SolicitacaoAcesso,
     VinculoAcesso,
 )
 
@@ -200,4 +201,13 @@ def setup_fase10_fixtures(self):
         vinculo=self.vinculo,
         revisor=self.user_gestor,
         decisao=ItemRevisao.DecisaoRevisao.PENDENTE,
+    )
+    self.solicitacao = SolicitacaoAcesso.objects.create(
+        colaborador=self.colab,
+        sistema=self.sis,
+        identificador_conta="lucas.solic",
+        justificativa="Acesso para desenvolvimento de testes no ambiente de CI",
+        chamado="CHAMADO-001",
+        status=SolicitacaoAcesso.StatusSolicitacao.PENDENTE_APROVACAO,
+        solicitado_por=self.user_gestor,
     )
