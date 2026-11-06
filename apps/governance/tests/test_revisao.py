@@ -72,23 +72,8 @@ class RevisaoPeriodicaAcessosTests(TestCase):
         self.user_colab = User.objects.create_user(
             username="lucas.alvo", email="lucas@empresa.com.br", password="ComplexPassword123!"
         )
-        self.colab_rev = Colaborador.objects.create(
-            nome_completo="Juliana Revisada",
-            matricula="SEC-0044",
-            email_corporativo="juliana.rev@empresa.com.br",
-            departamento=self.dept,
-            cargo=self.cargo,
-            localidade=self.loc,
-            data_admissao="2026-01-01",
-            status=Colaborador.StatusColaborador.ATIVO,
-            usuario=self.user_colab,
-        )
-        self.vinculo_rev = VinculoAcesso.objects.create(
-            colaborador=self.colab_rev,
-            sistema=self.sis,
-            identificador_conta="juliana.git",
-            status=VinculoAcesso.StatusAcesso.ATIVO,
-        )
+        self.colab.usuario = self.user_colab
+        self.colab.save()
 
         # Sistemas de diferentes criticidades
         self.sis_critico = Sistema.objects.create(
@@ -120,13 +105,13 @@ class RevisaoPeriodicaAcessosTests(TestCase):
         )
 
         itens_iniciais = list(campanha.itens.values_list("vinculo_id", flat=True))
-        self.assertIn(self.vinculo_rev.id, itens_iniciais)
+        self.assertIn(self.vinculo.id, itens_iniciais)
 
         # Cria novo vínculo concedido DEPOIS da abertura
         novo_vinculo = VinculoAcesso.objects.create(
-            colaborador=self.colab_rev,
+            colaborador=self.colab,
             sistema=self.sis_medio,
-            identificador_conta="juliana.jira",
+            identificador_conta="lucas.jira",
             status=VinculoAcesso.StatusAcesso.ATIVO,
         )
 
@@ -146,10 +131,10 @@ class RevisaoPeriodicaAcessosTests(TestCase):
             data_admissao="2020-01-01",
             usuario=self.revisor_a,
         )
-        self.colab_rev.gestor_imediato = gestor_colab
-        self.colab_rev.save()
+        self.colab.gestor_imediato = gestor_colab
+        self.colab.save()
 
-        rev = determinar_revisor(self.vinculo_rev)
+        rev = determinar_revisor(self.vinculo)
         self.assertEqual(rev, self.revisor_a)
 
         # 2. Gestor sem usuário -> Recai no dono do sistema
@@ -158,14 +143,14 @@ class RevisaoPeriodicaAcessosTests(TestCase):
         self.sis.dono = self.revisor_b
         self.sis.save()
 
-        rev = determinar_revisor(self.vinculo_rev)
+        rev = determinar_revisor(self.vinculo)
         self.assertEqual(rev, self.revisor_b)
 
         # 3. Sem dono -> Recai no primeiro Gestor SecOps
         self.sis.dono = None
         self.sis.save()
 
-        rev = determinar_revisor(self.vinculo_rev)
+        rev = determinar_revisor(self.vinculo)
         self.assertEqual(rev, self.user_gestor)
 
         # 4. Nenhum revisor elegível (alerta emitido no log)
@@ -190,13 +175,13 @@ class RevisaoPeriodicaAcessosTests(TestCase):
         self.sis.save()
 
         # Na determinação de revisor, o dono do acesso é pulado
-        rev = determinar_revisor(self.vinculo_rev)
+        rev = determinar_revisor(self.vinculo)
         self.assertNotEqual(rev, self.user_colab)
 
         # Se forçar o item a ter revisor = colaborador, registrar_decisao deve rejeitar com PermissionDenied
         item = ItemRevisao.objects.create(
             campanha=self.campanha,
-            vinculo=self.vinculo_rev,
+            vinculo=self.vinculo,
             revisor=self.user_colab,
             decisao=ItemRevisao.DecisaoRevisao.PENDENTE,
         )
@@ -212,7 +197,7 @@ class RevisaoPeriodicaAcessosTests(TestCase):
         """15.8 (Objeto/IDOR): Revisor A recebe 404 estrito ao tentar decidir item do revisor B."""
         item_b = ItemRevisao.objects.create(
             campanha=self.campanha,
-            vinculo=self.vinculo_rev,
+            vinculo=self.vinculo,
             revisor=self.revisor_b,
             decisao=ItemRevisao.DecisaoRevisao.PENDENTE,
         )
@@ -232,7 +217,7 @@ class RevisaoPeriodicaAcessosTests(TestCase):
         """15.8 (Estado): Não decide em campanha ENCERRADA; ENCERRADA não reabre."""
         item = ItemRevisao.objects.create(
             campanha=self.campanha,
-            vinculo=self.vinculo_rev,
+            vinculo=self.vinculo,
             revisor=self.revisor_a,
             decisao=ItemRevisao.DecisaoRevisao.PENDENTE,
         )
@@ -260,9 +245,9 @@ class RevisaoPeriodicaAcessosTests(TestCase):
     def test_15_6_justificativa_obrigatoria_para_revogar_e_manter_critico(self):
         """15.8 (Justificativa): REVOGAR e MANTER em sistema CRÍTICO sem justificativa (mín 20) são recusados."""
         v_critico = VinculoAcesso.objects.create(
-            colaborador=self.colab_rev,
+            colaborador=self.colab,
             sistema=self.sis_critico,
-            identificador_conta="juliana.aws",
+            identificador_conta="lucas.aws",
             status=VinculoAcesso.StatusAcesso.ATIVO,
         )
         item_critico = ItemRevisao.objects.create(
@@ -284,9 +269,9 @@ class RevisaoPeriodicaAcessosTests(TestCase):
 
         # 2. REVOGAR com justificativa curta
         v_medio = VinculoAcesso.objects.create(
-            colaborador=self.colab_rev,
+            colaborador=self.colab,
             sistema=self.sis_medio,
-            identificador_conta="juliana.jira2",
+            identificador_conta="lucas.jira2",
             status=VinculoAcesso.StatusAcesso.ATIVO,
         )
         item_medio = ItemRevisao.objects.create(
@@ -316,15 +301,15 @@ class RevisaoPeriodicaAcessosTests(TestCase):
     def test_15_7_decisao_em_lote_rejeita_alta_e_critica(self):
         """15.8 (Lote): Decisão em lote recusada se incluir itens de criticidade ALTA ou CRÍTICA."""
         v_alta = VinculoAcesso.objects.create(
-            colaborador=self.colab_rev,
+            colaborador=self.colab,
             sistema=self.sis,  # GitLab = ALTA
-            identificador_conta="juliana.git_lote",
+            identificador_conta="lucas.git_lote",
             status=VinculoAcesso.StatusAcesso.ATIVO,
         )
         v_baixa = VinculoAcesso.objects.create(
-            colaborador=self.colab_rev,
+            colaborador=self.colab,
             sistema=self.sis_baixo,
-            identificador_conta="juliana.wiki_lote",
+            identificador_conta="lucas.wiki_lote",
             status=VinculoAcesso.StatusAcesso.ATIVO,
         )
 
@@ -357,9 +342,9 @@ class RevisaoPeriodicaAcessosTests(TestCase):
     def test_15_8_revogacao_decorrente_gera_tarefa_ti_e_exige_evidencia(self):
         """15.8 (Revogação): REVOGAR gera tarefa para a TI; vínculo só muda de status com evidência."""
         v = VinculoAcesso.objects.create(
-            colaborador=self.colab_rev,
+            colaborador=self.colab,
             sistema=self.sis_medio,
-            identificador_conta="juliana.rev_ti",
+            identificador_conta="lucas.rev_ti",
             status=VinculoAcesso.StatusAcesso.ATIVO,
         )
         item = ItemRevisao.objects.create(campanha=self.campanha, vinculo=v, revisor=self.revisor_a)
@@ -396,11 +381,10 @@ class RevisaoPeriodicaAcessosTests(TestCase):
 
     def test_15_9_offboarding_desativa_usuario_vinculado(self):
         """15.8 (Desligamento): Início do offboarding desativa imediatamente o login (is_active=False)."""
-        self.assertTrue(self.user_colab.is_active)
-        self.assertEqual(self.colab_rev.usuario, self.user_colab)
+        self.assertTrue(self.colab.usuario.is_active)
 
         iniciar_offboarding(
-            colaborador_id=self.colab_rev.pk,
+            colaborador_id=self.colab.pk,
             responsavel=self.user_analista,
             motivo="Desligamento Imediato",
         )
@@ -412,7 +396,7 @@ class RevisaoPeriodicaAcessosTests(TestCase):
         """15.8 (Auditoria): REVIEW_DECISION emitido com revisor, item e decisão."""
         item = ItemRevisao.objects.create(
             campanha=self.campanha,
-            vinculo=self.vinculo_rev,
+            vinculo=self.vinculo,
             revisor=self.revisor_a,
             decisao=ItemRevisao.DecisaoRevisao.PENDENTE,
         )
