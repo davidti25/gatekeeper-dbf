@@ -27,6 +27,5 @@ ignore = [
 known-first-party = ["core", "apps"]
 
 [tool.bandit]
-exclude_dirs = ["venv", "staticfiles", "tests.py", "migrations"]
+exclude_dirs = ["venv", "staticfiles", "tests", "tests.py", "migrations"]
 skips = ["B101"]
-

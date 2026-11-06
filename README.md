@@ -170,7 +170,7 @@ Guarde a chave privada fora do servidor e **teste a restauração periodicamente
 ```bash
 python manage.py test apps.governance   # suíte completa
 ruff check . && ruff format --check .
-bandit -r apps core -x apps/governance/tests.py
+bandit -c pyproject.toml -r apps core
 pip-audit -r requirements.txt
 pre-commit install                      # hooks locais (lint, segredos, CSS atualizado)
 ```

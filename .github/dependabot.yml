@@ -15,6 +15,13 @@ updates:
       - "security"
     commit-message:
       prefix: "deps"
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -26,3 +33,10 @@ updates:
       - "security"
     commit-message:
       prefix: "ci"
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
