@@ -5,12 +5,15 @@ Fábricas de dados e utilitários compartilhados para a suíte de testes de Gove
 from allauth.mfa.models import Authenticator
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
+from django.utils import timezone
 
 from apps.governance.models import (
+    CampanhaRevisao,
     Cargo,
     Colaborador,
     Departamento,
     ItemChecklistOffboarding,
+    ItemRevisao,
     Localidade,
     ProcessoOffboarding,
     Sistema,
@@ -185,4 +188,16 @@ def setup_fase10_fixtures(self):
         processo=self.processo,
         vinculo_acesso=self.vinculo,
         status=ItemChecklistOffboarding.StatusItem.PENDENTE,
+    )
+    self.campanha = CampanhaRevisao.objects.create(
+        nome="Campanha Teste Fixtures",
+        prazo=timezone.localdate() + timezone.timedelta(days=30),
+        criada_por=self.user_gestor,
+        status=CampanhaRevisao.StatusCampanha.ABERTA,
+    )
+    self.item_revisao = ItemRevisao.objects.create(
+        campanha=self.campanha,
+        vinculo=self.vinculo,
+        revisor=self.user_gestor,
+        decisao=ItemRevisao.DecisaoRevisao.PENDENTE,
     )

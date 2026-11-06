@@ -14,11 +14,26 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.utils import timezone
 
-from .models import Colaborador, ItemChecklistOffboarding, ProcessoOffboarding, VinculoAcesso
+from .models import (
+    CampanhaRevisao,
+    Colaborador,
+    ItemChecklistOffboarding,
+    ItemRevisao,
+    ProcessoOffboarding,
+    Sistema,
+    VinculoAcesso,
+)
 
 logger = logging.getLogger("gatekeeper.audit")
 
 S = ItemChecklistOffboarding.StatusItem
+
+CRITICIDADE_NIVEL = {
+    Sistema.Criticidade.BAIXA: 1,
+    Sistema.Criticidade.MEDIA: 2,
+    Sistema.Criticidade.ALTA: 3,
+    Sistema.Criticidade.CRITICA: 4,
+}
 
 # Fase 6.1: Máquina de estados estrita (Deny by Default)
 TRANSICOES_PERMITIDAS = {
@@ -66,6 +81,9 @@ def iniciar_offboarding(colaborador_id, responsavel, motivo="Desligamento Formal
     colaborador.status = Colaborador.StatusColaborador.DESLIGADO
     if not colaborador.data_desligamento:
         colaborador.data_desligamento = hoje
+    if colaborador.usuario_id and colaborador.usuario.is_active:
+        colaborador.usuario.is_active = False
+        colaborador.usuario.save(update_fields=["is_active"])
     colaborador.save()
 
     processo = ProcessoOffboarding.objects.create(
@@ -243,3 +261,341 @@ def revogar_item_checklist(
         )
 
     return item, processo
+
+
+User = None
+
+
+def _get_user_model_lazy():
+    global User
+    if User is None:
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+    return User
+
+
+def determinar_revisor(vinculo):
+    """
+    Fase 15.2: Determina o revisor para um vínculo seguindo a ordem de precedência:
+    1. Gestor imediato do colaborador (se possuir usuário ativo e != colaborador.usuario)
+    2. Dono do sistema (se possuir usuário ativo e != colaborador.usuario)
+    3. Fila do grupo Gestor SecOps (usuário ativo != colaborador.usuario)
+    Retorna o User revisor ou None se não encontrar nenhum elegível.
+    """
+    user_cls = _get_user_model_lazy()
+    colab_user = getattr(vinculo.colaborador, "usuario", None)
+
+    # 1. Gestor imediato
+    gestor = vinculo.colaborador.gestor_imediato
+    if gestor and gestor.usuario and gestor.usuario.is_active:
+        if not colab_user or gestor.usuario_id != colab_user.id:
+            return gestor.usuario
+
+    # 2. Dono do sistema
+    dono = vinculo.sistema.dono
+    if dono and dono.is_active:
+        if not colab_user or dono.id != colab_user.id:
+            return dono
+
+    # 3. Fila do grupo Gestor SecOps
+    gestores_secops = user_cls.objects.filter(groups__name="Gestor SecOps", is_active=True).order_by("id")
+    for g in gestores_secops:
+        if not colab_user or g.id != colab_user.id:
+            return g
+
+    return None
+
+
+@transaction.atomic
+def abrir_campanha(
+    nome,
+    prazo,
+    criada_por,
+    descricao="",
+    escopo_criticidade_minima=None,
+    escopo_departamentos=None,
+):
+    """
+    Fase 15.2: Tira uma fotografia auditável: cria um ItemRevisao para cada VinculoAcesso ATIVO no escopo.
+    """
+    if prazo < timezone.localdate():
+        raise ValidationError("O prazo da campanha não pode ser uma data retroativa.")
+
+    campanha = CampanhaRevisao.objects.create(
+        nome=nome,
+        descricao=descricao,
+        escopo_criticidade_minima=escopo_criticidade_minima or None,
+        prazo=prazo,
+        criada_por=criada_por,
+        status=CampanhaRevisao.StatusCampanha.ABERTA,
+    )
+    if escopo_departamentos:
+        campanha.escopo_departamentos.set(escopo_departamentos)
+
+    # Fotografia: apenas vínculos ATIVOS no momento da abertura
+    vinculos = VinculoAcesso.objects.filter(status=VinculoAcesso.StatusAcesso.ATIVO).select_related(
+        "colaborador__gestor_imediato__usuario",
+        "colaborador__usuario",
+        "sistema__dono",
+    )
+
+    if escopo_departamentos:
+        vinculos = vinculos.filter(colaborador__departamento__in=escopo_departamentos)
+
+    if escopo_criticidade_minima:
+        nivel_minimo = CRITICIDADE_NIVEL.get(escopo_criticidade_minima, 1)
+        sistemas_validos = [
+            s.id for s in Sistema.objects.all() if CRITICIDADE_NIVEL.get(s.criticidade, 1) >= nivel_minimo
+        ]
+        vinculos = vinculos.filter(sistema_id__in=sistemas_validos)
+
+    itens_para_criar = []
+    itens_sem_revisor = 0
+
+    for v in vinculos:
+        revisor = determinar_revisor(v)
+        colab_user = getattr(v.colaborador, "usuario", None)
+
+        if not revisor:
+            itens_sem_revisor += 1
+            logger.warning(
+                "REVIEW_UNASSIGNED_ITEM",
+                extra={
+                    "audit": {
+                        "vinculo_id": v.id,
+                        "colaborador": v.colaborador.nome_completo,
+                        "sistema": v.sistema.nome,
+                        "motivo": "Nenhum revisor elegível encontrado respeitando segregação de funções",
+                    }
+                },
+            )
+            # Fallback de segurança: atribui ao criador da campanha se este não for o próprio colaborador
+            if criada_por and (not colab_user or criada_por.id != colab_user.id):
+                revisor = criada_por
+
+        if revisor:
+            itens_para_criar.append(
+                ItemRevisao(
+                    campanha=campanha,
+                    vinculo=v,
+                    revisor=revisor,
+                    decisao=ItemRevisao.DecisaoRevisao.PENDENTE,
+                )
+            )
+
+    if itens_para_criar:
+        ItemRevisao.objects.bulk_create(itens_para_criar)
+
+    logger.info(
+        "REVIEW_CAMPAIGN_OPENED",
+        extra={
+            "audit": {
+                "campanha_id": campanha.id,
+                "nome": campanha.nome,
+                "prazo": str(campanha.prazo),
+                "criada_por": criada_por.username,
+                "total_itens": len(itens_para_criar),
+                "itens_sem_revisor_alerta": itens_sem_revisor,
+            }
+        },
+    )
+
+    return campanha
+
+
+@transaction.atomic
+def registrar_decisao(item_id, decisao, justificativa, usuario):
+    """
+    Fase 15.2: Registra a decisão de um item de revisão com select_for_update,
+    validando segregação de funções, prazos e integridade das justificativas.
+    """
+    item = (
+        ItemRevisao.objects.select_for_update()
+        .select_related("campanha", "vinculo__colaborador__usuario", "vinculo__sistema")
+        .get(pk=item_id)
+    )
+
+    # 1. Campanha deve estar aberta
+    if item.campanha.status != CampanhaRevisao.StatusCampanha.ABERTA:
+        raise ValidationError("Não é permitido registrar decisões em campanhas já encerradas.")
+
+    # 2. Revisor designado
+    if item.revisor_id != usuario.id:
+        raise PermissionDenied("Apenas o revisor designado pode decidir sobre este item.")
+
+    # 3. Segregação de funções revalidada no momento da decisão
+    colab_user = getattr(item.vinculo.colaborador, "usuario", None)
+    if colab_user and usuario.id == colab_user.id:
+        raise PermissionDenied("Segregação de funções: o usuário não pode revisar o próprio acesso.")
+
+    # 4. Máquina de estados
+    if item.decisao != ItemRevisao.DecisaoRevisao.PENDENTE:
+        raise ValidationError(f"Este item já foi decidido anteriormente como {item.get_decisao_display()}.")
+
+    if decisao not in {ItemRevisao.DecisaoRevisao.MANTER, ItemRevisao.DecisaoRevisao.REVOGAR}:
+        raise ValidationError(f"Decisão inválida: '{decisao}'. Opções válidas: MANTER ou REVOGAR.")
+
+    # 5. Justificativa
+    justificativa = (justificativa or "").strip()
+    if decisao == ItemRevisao.DecisaoRevisao.REVOGAR:
+        if len(justificativa) < 20:
+            raise ValidationError("Justificativa obrigatória (mínimo de 20 caracteres) para decisões de REVOGAR.")
+
+    if decisao == ItemRevisao.DecisaoRevisao.MANTER:
+        if item.vinculo.sistema.criticidade == Sistema.Criticidade.CRITICA:
+            if len(justificativa) < 20:
+                raise ValidationError(
+                    "Justificativa obrigatória (mínimo de 20 caracteres) para MANTER acesso em sistema de criticidade CRÍTICA."
+                )
+
+    item.decisao = decisao
+    item.justificativa = justificativa
+    item.decidido_em = timezone.now()
+    item.decidido_por = usuario
+    item.save()
+
+    logger.info(
+        "REVIEW_DECISION",
+        extra={
+            "audit": {
+                "campanha": item.campanha.nome,
+                "campanha_id": item.campanha.id,
+                "item_id": item.id,
+                "colaborador": item.vinculo.colaborador.nome_completo,
+                "colaborador_id": item.vinculo.colaborador.id,
+                "sistema": item.vinculo.sistema.nome,
+                "identificador_conta": item.vinculo.identificador_conta,
+                "revisor": usuario.username,
+                "decisao": decisao,
+                "justificativa": justificativa,
+            }
+        },
+    )
+
+    return item
+
+
+@transaction.atomic
+def registrar_decisao_lote(itens_ids, decisao, justificativa, usuario):
+    """
+    Fase 15.5: Decisão em lote estritamente para itens de criticidade BAIXA ou MEDIA.
+    Se algum item for ALTA ou CRITICA, rejeita a operação em lote inteira.
+    """
+    itens = list(
+        ItemRevisao.objects.filter(
+            id__in=itens_ids,
+            revisor=usuario,
+            campanha__status=CampanhaRevisao.StatusCampanha.ABERTA,
+        ).select_related("vinculo__sistema")
+    )
+
+    if not itens:
+        raise ValidationError("Nenhum item válido encontrado para decisão em lote.")
+
+    itens_criticos = [
+        item.id
+        for item in itens
+        if item.vinculo.sistema.criticidade in {Sistema.Criticidade.ALTA, Sistema.Criticidade.CRITICA}
+    ]
+    if itens_criticos:
+        raise ValidationError(
+            "Decisão em lote não permitida para acessos de criticidade ALTA ou CRÍTICA. "
+            "Esses itens devem ser revisados e decididos individualmente."
+        )
+
+    resultados = []
+    for item in itens:
+        res = registrar_decisao(item.id, decisao, justificativa, usuario)
+        resultados.append(res)
+    return resultados
+
+
+@transaction.atomic
+def executar_revogacao_revisao(item_id, evidencia, usuario):
+    """
+    Fase 15.3: Execução técnica pela TI da revogação decorrente de uma decisão REVOGAR.
+    Atualiza o VinculoAcesso para REVOGADO somente após comprovação por evidência.
+    """
+    item = ItemRevisao.objects.select_for_update().select_related("vinculo", "campanha").get(pk=item_id)
+
+    if item.decisao != ItemRevisao.DecisaoRevisao.REVOGAR:
+        raise ValidationError("Apenas itens com decisão 'REVOGAR' podem ser executados para revogação.")
+
+    if item.tarefa_revogada:
+        raise ValidationError("A revogação deste acesso já foi executada e comprovada anteriormente.")
+
+    evidencia = (evidencia or "").strip()
+    if not evidencia:
+        raise ValidationError("Evidência técnica da revogação é obrigatória.")
+
+    agora = timezone.now()
+    item.tarefa_revogada = True
+    item.evidencia_revogacao = evidencia
+    item.executado_em = agora
+    item.executado_por = usuario
+    item.save()
+
+    # Atualiza o vínculo real para REVOGADO
+    vinculo = item.vinculo
+    vinculo.status = VinculoAcesso.StatusAcesso.REVOGADO
+    vinculo.data_revogacao = agora
+    vinculo.revogado_por = usuario
+    vinculo.save()
+
+    logger.info(
+        "REVIEW_REVOCATION_EXECUTED",
+        extra={
+            "audit": {
+                "campanha_id": item.campanha_id,
+                "item_id": item.id,
+                "vinculo_id": vinculo.id,
+                "colaborador": vinculo.colaborador.nome_completo,
+                "sistema": vinculo.sistema.nome,
+                "identificador_conta": vinculo.identificador_conta,
+                "operador_ti": usuario.username,
+                "evidencia": evidencia,
+            }
+        },
+    )
+
+    return item
+
+
+@transaction.atomic
+def encerrar_campanha(campanha_id, usuario, forcar=False):
+    """
+    Fase 15.2: Encerra uma campanha de revisão.
+    Permitido se todos os itens foram decididos OU se a campanha já ultrapassou o prazo limite (ou forçar=True).
+    """
+    campanha = CampanhaRevisao.objects.select_for_update().get(pk=campanha_id)
+
+    if campanha.status == CampanhaRevisao.StatusCampanha.ENCERRADA:
+        raise ValidationError("Esta campanha já foi encerrada anteriormente e não pode ser reaberta.")
+
+    hoje = timezone.localdate()
+    itens_pendentes = campanha.itens.filter(decisao=ItemRevisao.DecisaoRevisao.PENDENTE).count()
+
+    if itens_pendentes > 0 and hoje <= campanha.prazo and not forcar:
+        raise ValidationError(
+            f"A campanha possui {itens_pendentes} item(ns) pendente(s) e o prazo ({campanha.prazo.strftime('%d/%m/%Y')}) ainda não expirou."
+        )
+
+    campanha.status = CampanhaRevisao.StatusCampanha.ENCERRADA
+    campanha.encerrada_em = timezone.now()
+    campanha.save()
+
+    logger.info(
+        "REVIEW_CAMPAIGN_CLOSED",
+        extra={
+            "audit": {
+                "campanha_id": campanha.id,
+                "nome": campanha.nome,
+                "encerrada_por": usuario.username,
+                "total_itens": campanha.total_itens,
+                "itens_pendentes_nao_revisados": itens_pendentes,
+            }
+        },
+    )
+
+    return campanha

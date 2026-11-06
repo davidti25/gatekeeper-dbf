@@ -135,6 +135,14 @@ class Sistema(models.Model):
         verbose_name="Responsável pela Gestão de Contas",
         help_text="Ex: TI Interna, Líder do Setor ou Suporte do Fornecedor",
     )
+    dono = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sistemas_sob_responsabilidade",
+        verbose_name="Dono do sistema (revisor)",
+    )
     link_painel_admin = models.URLField(blank=True, verbose_name="URL de Acesso / Painel Admin")
     instrucoes_revogacao = models.TextField(
         blank=True,
@@ -226,6 +234,14 @@ class Colaborador(models.Model):
         blank=True,
         related_name="liderados",
         verbose_name="Gestor Imediato",
+    )
+    usuario = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="colaborador",
+        verbose_name="Usuário no GateKeeper",
     )
     status = models.CharField(
         max_length=20,
@@ -499,3 +515,186 @@ class ItemChecklistOffboarding(models.Model):
 
     def __str__(self):
         return f"[{self.get_status_display()}] {self.vinculo_acesso.sistema.nome} ({self.vinculo_acesso.identificador_conta})"
+
+
+class CampanhaRevisao(models.Model):
+    """
+    Fase 15.1: Ciclo de Revisão Periódica de Acessos (Recertificação).
+    Tira uma fotografia auditável dos acessos ativos para validação pelos gestores/donos.
+    """
+
+    class StatusCampanha(models.TextChoices):
+        ABERTA = "ABERTA", "Aberta"
+        ENCERRADA = "ENCERRADA", "Encerrada"
+
+    nome = models.CharField(max_length=150, verbose_name="Nome da Campanha")
+    descricao = models.TextField(blank=True, verbose_name="Descrição do Escopo")
+    escopo_criticidade_minima = models.CharField(
+        max_length=15,
+        choices=Sistema.Criticidade.choices,
+        blank=True,
+        null=True,
+        verbose_name="Criticidade Mínima do Escopo",
+        help_text="Se informado, apenas sistemas com esta criticidade ou superior entram na campanha",
+    )
+    escopo_departamentos = models.ManyToManyField(
+        Departamento,
+        blank=True,
+        related_name="campanhas_revisao",
+        verbose_name="Departamentos no Escopo",
+        help_text="Se vazio, abrange todos os departamentos",
+    )
+    aberta_em = models.DateTimeField(default=timezone.now, verbose_name="Aberta em")
+    prazo = models.DateField(verbose_name="Prazo de Conclusão")
+    encerrada_em = models.DateTimeField(null=True, blank=True, verbose_name="Encerrada em")
+    status = models.CharField(
+        max_length=20,
+        choices=StatusCampanha.choices,
+        default=StatusCampanha.ABERTA,
+        verbose_name="Status da Campanha",
+    )
+    criada_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="campanhas_revisao_criadas",
+        verbose_name="Criada por (SecOps)",
+    )
+    history = HistoricalRecords()
+
+    class Meta:
+        verbose_name = "Campanha de Revisão"
+        verbose_name_plural = "Campanhas de Revisão"
+        ordering = ["-aberta_em"]
+        permissions = [
+            ("abrir_campanha_revisao", "Pode abrir e encerrar campanhas de revisão de acessos"),
+        ]
+
+    def __str__(self):
+        return f"{self.nome} [{self.get_status_display()}]"
+
+    @property
+    def total_itens(self):
+        if hasattr(self, "_total_itens"):
+            return self._total_itens
+        return self.itens.count()
+
+    @property
+    def total_decididos(self):
+        if hasattr(self, "_total_decididos"):
+            return self._total_decididos
+        return self.itens.exclude(decisao=ItemRevisao.DecisaoRevisao.PENDENTE).count()
+
+    @property
+    def total_revogados(self):
+        if hasattr(self, "_total_revogados"):
+            return self._total_revogados
+        return self.itens.filter(decisao=ItemRevisao.DecisaoRevisao.REVOGAR).count()
+
+    @property
+    def total_mantidos(self):
+        if hasattr(self, "_total_mantidos"):
+            return self._total_mantidos
+        return self.itens.filter(decisao=ItemRevisao.DecisaoRevisao.MANTER).count()
+
+    @property
+    def total_pendentes(self):
+        if hasattr(self, "_total_pendentes"):
+            return self._total_pendentes
+        return self.itens.filter(decisao=ItemRevisao.DecisaoRevisao.PENDENTE).count()
+
+    @property
+    def percentual_concluido(self):
+        total = self.total_itens
+        if total == 0:
+            return 100
+        return int((self.total_decididos / total) * 100)
+
+    @property
+    def esta_vencida(self):
+        return self.status == self.StatusCampanha.ABERTA and timezone.localdate() > self.prazo
+
+
+class ItemRevisao(models.Model):
+    """
+    Fase 15.1: Item individual de revisão de um vínculo de acesso específico.
+    Protegido por segregação de funções, auditoria e rastreabilidade total.
+    """
+
+    class DecisaoRevisao(models.TextChoices):
+        PENDENTE = "PENDENTE", "Pendente"
+        MANTER = "MANTER", "Manter Acesso"
+        REVOGAR = "REVOGAR", "Revogar Acesso"
+
+    campanha = models.ForeignKey(
+        CampanhaRevisao,
+        on_delete=models.PROTECT,
+        related_name="itens",
+        verbose_name="Campanha de Revisão",
+    )
+    vinculo = models.ForeignKey(
+        VinculoAcesso,
+        on_delete=models.PROTECT,
+        related_name="itens_revisao",
+        verbose_name="Vínculo de Acesso",
+    )
+    revisor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="revisoes_atribuidas",
+        verbose_name="Revisor Designado",
+    )
+    decisao = models.CharField(
+        max_length=20,
+        choices=DecisaoRevisao.choices,
+        default=DecisaoRevisao.PENDENTE,
+        verbose_name="Decisão do Revisor",
+    )
+    justificativa = models.TextField(
+        blank=True,
+        verbose_name="Justificativa da Decisão",
+        help_text="Obrigatória (mín. 20 caracteres) para REVOGAR e para MANTER em sistema CRÍTICO",
+    )
+    decidido_em = models.DateTimeField(null=True, blank=True, verbose_name="Decidido em")
+    decidido_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="revisoes_decididas",
+        verbose_name="Decidido por",
+    )
+
+    # Fase 15.3: Revogação decorrente executada pela TI
+    tarefa_revogada = models.BooleanField(
+        default=False,
+        verbose_name="Revogação Executada pela TI?",
+        help_text="Indica se a equipe técnica executou a revogação no sistema de origem",
+    )
+    executado_em = models.DateTimeField(null=True, blank=True, verbose_name="Data/Hora da Revogação Técnica")
+    executado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="revisoes_executadas_ti",
+        verbose_name="Executado por (TI)",
+    )
+    evidencia_revogacao = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="Evidência da Revogação (TI)",
+        help_text="Número do ticket, chamado ou identificador de auditoria comprovando a remoção",
+    )
+    history = HistoricalRecords()
+
+    class Meta:
+        verbose_name = "Item de Revisão"
+        verbose_name_plural = "Itens de Revisão"
+        ordering = ["campanha", "vinculo"]
+        constraints = [models.UniqueConstraint(fields=["campanha", "vinculo"], name="unique_campanha_vinculo_revisao")]
+        permissions = [
+            ("revisar_acesso", "Pode revisar acessos atribuídos a si"),
+        ]
+
+    def __str__(self):
+        return f"{self.campanha.nome} - {self.vinculo.colaborador.nome_completo} ({self.vinculo.sistema.nome}) [{self.get_decisao_display()}]"

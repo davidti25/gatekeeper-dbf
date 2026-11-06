@@ -1,0 +1,187 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relatório de Revisão de Acessos - {{ campanha.nome }} | GateKeeper-DBF</title>
+
+    <!-- Fontes Locais (Inter & JetBrains Mono) - Sem vazamento de IP / LGPD -->
+    <link rel="stylesheet" href="{% static 'fonts/fonts.css' %}">
+
+    <!-- Tailwind CSS Compilado Localmente -->
+    <link rel="stylesheet" href="{% static 'css/tailwind.min.css' %}">
+
+    <!-- Lucide Icons & Scripts Utilitários Locais -->
+    <script src="{% static 'vendor/lucide.min.js' %}" defer></script>
+    <script src="{% static 'js/app.js' %}" defer></script>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen py-8">
+
+    <div class="max-w-5xl mx-auto px-6">
+
+        <!-- Action Bar (Hidden on Print) -->
+        <div class="no-print mb-6 flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+            <a href="{% url 'campanha_painel' campanha.pk %}" class="text-sm font-semibold text-sky-600 hover:text-sky-700 flex items-center space-x-1">
+                <span>&larr; Voltar para o Painel da Campanha</span>
+            </a>
+            <div class="flex items-center space-x-3">
+                <button type="button" data-action="print" class="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-sm shadow transition flex items-center space-x-2">
+                    <i data-lucide="printer" class="w-4 h-4"></i>
+                    <span>Imprimir / Salvar PDF</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Document Sheet -->
+        <div class="bg-white p-10 rounded-2xl shadow-md border border-slate-200 space-y-6">
+
+            <!-- Document Header -->
+            <div class="flex items-start justify-between pb-6 border-b-2 border-slate-800">
+                <div class="space-y-1">
+                    <div class="flex items-center space-x-2">
+                        <div class="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold text-sm">
+                            GK
+                        </div>
+                        <h1 class="text-xl font-bold tracking-tight text-slate-900">GateKeeper-DBF</h1>
+                    </div>
+                    <p class="text-xs text-slate-500 uppercase tracking-wider font-semibold">Auditoria & Governança de Acessos Corporativos</p>
+                    <p class="text-xs text-slate-500">Relatório Oficial de Recertificação Periódica de Privilégios (CIS Controls 5.3)</p>
+                </div>
+                <div class="text-right text-xs text-slate-500 font-mono">
+                    <p><strong>Protocolo:</strong> GK-REV-{{ campanha.pk|stringformat:"05d" }}</p>
+                    <p><strong>Emissão:</strong> {% now "d/m/Y H:i:s" %}</p>
+                    <p><strong>Status:</strong>
+                        {% if campanha.status == 'ENCERRADA' %}
+                            <span class="font-bold text-emerald-600">ENCERRADA</span>
+                        {% else %}
+                            <span class="font-bold text-sky-600">EM ANDAMENTO</span>
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+
+            <!-- Dados da Campanha -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+                <div>
+                    <span class="text-slate-400 block font-semibold uppercase">Campanha</span>
+                    <span class="font-bold text-slate-800 text-sm">{{ campanha.nome }}</span>
+                </div>
+                <div>
+                    <span class="text-slate-400 block font-semibold uppercase">Prazo Limite</span>
+                    <span class="font-mono text-slate-800">{{ campanha.prazo|date:"d/m/Y" }}</span>
+                </div>
+                <div>
+                    <span class="text-slate-400 block font-semibold uppercase">Aberta Em</span>
+                    <span class="text-slate-800">{{ campanha.aberta_em|date:"d/m/Y H:i" }}</span>
+                </div>
+                <div>
+                    <span class="text-slate-400 block font-semibold uppercase">Responsável SecOps</span>
+                    <span class="text-slate-800 font-mono">{{ campanha.criada_por.username }}</span>
+                </div>
+            </div>
+
+            <!-- Resumo Executivo / Estatísticas -->
+            <div class="grid grid-cols-4 gap-3 text-center">
+                <div class="p-3 rounded-lg bg-slate-100 border border-slate-200">
+                    <span class="text-[11px] text-slate-500 uppercase font-semibold">Total de Vínculos</span>
+                    <p class="text-xl font-bold font-mono text-slate-800">{{ campanha.total_itens }}</p>
+                </div>
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="text-[11px] text-emerald-700 uppercase font-semibold">Mantidos</span>
+                    <p class="text-xl font-bold font-mono text-emerald-700">{{ campanha.total_mantidos }}</p>
+                </div>
+                <div class="p-3 rounded-lg bg-rose-50 border border-rose-200">
+                    <span class="text-[11px] text-rose-700 uppercase font-semibold">Revogados</span>
+                    <p class="text-xl font-bold font-mono text-rose-700">{{ campanha.total_revogados }}</p>
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="text-[11px] text-amber-700 uppercase font-semibold">Não Revisados (Pend.)</span>
+                    <p class="text-xl font-bold font-mono text-amber-700">{{ campanha.total_pendentes }}</p>
+                </div>
+            </div>
+
+            <!-- Tabela Detalhada de Itens -->
+            <div class="space-y-3">
+                <h2 class="text-xs font-bold text-slate-800 uppercase tracking-wider">Trilha Detalhada de Decisões e Evidências</h2>
+                <div class="border border-slate-200 rounded-xl overflow-hidden">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
+                            <tr>
+                                <th class="px-3.5 py-2.5">Colaborador</th>
+                                <th class="px-3.5 py-2.5">Sistema / Conta</th>
+                                <th class="px-3.5 py-2.5">Criticidade</th>
+                                <th class="px-3.5 py-2.5">Revisor Designado</th>
+                                <th class="px-3.5 py-2.5">Decisão</th>
+                                <th class="px-3.5 py-2.5">Justificativa / Evidência TI</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-200">
+                            {% for item in itens %}
+                            <tr>
+                                <td class="px-3.5 py-2.5 font-medium text-slate-900">
+                                    {{ item.vinculo.colaborador.nome_completo }}
+                                    <span class="block text-[11px] text-slate-500">{{ item.vinculo.colaborador.cargo.nome }}</span>
+                                </td>
+                                <td class="px-3.5 py-2.5">
+                                    <span class="font-semibold text-slate-800">{{ item.vinculo.sistema.nome }}</span>
+                                    <span class="block font-mono text-[11px] text-slate-500">{{ item.vinculo.identificador_conta }}</span>
+                                </td>
+                                <td class="px-3.5 py-2.5 font-mono text-[11px]">
+                                    {{ item.vinculo.sistema.get_criticidade_display }}
+                                </td>
+                                <td class="px-3.5 py-2.5 font-mono text-slate-700">
+                                    {{ item.revisor.username }}
+                                </td>
+                                <td class="px-3.5 py-2.5 font-semibold">
+                                    {% if item.decisao == 'MANTER' %}
+                                        <span class="text-emerald-700">MANTIDO</span>
+                                    {% elif item.decisao == 'REVOGAR' %}
+                                        <span class="text-rose-700">REVOGAR</span>
+                                    {% else %}
+                                        <span class="text-amber-700">NÃO REVISADO</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-3.5 py-2.5 text-[11px] text-slate-600 max-w-xs">
+                                    {% if item.justificativa %}
+                                        <p class="font-sans">"{{ item.justificativa }}"</p>
+                                    {% endif %}
+                                    {% if item.tarefa_revogada %}
+                                        <p class="font-mono text-emerald-800 mt-1">
+                                            ✓ TI: {{ item.evidencia_revogacao }} ({{ item.executado_por.username }} em {{ item.executado_em|date:"d/m/Y H:i" }})
+                                        </p>
+                                    {% elif item.decisao == 'REVOGAR' %}
+                                        <p class="font-mono text-rose-800 mt-1">
+                                            ⚠️ TI: Revogação pendente de comprovação técnica
+                                        </p>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="6" class="px-4 py-8 text-center text-slate-400">Nenhum item associado à campanha.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Signatures & Non-repudiation -->
+            <div class="pt-8 border-t-2 border-slate-200 grid grid-cols-2 gap-8 text-xs text-center text-slate-600">
+                <div class="space-y-1">
+                    <div class="border-b border-slate-400 pb-8"></div>
+                    <p class="font-bold text-slate-800">{{ campanha.criada_por.get_full_name|default:campanha.criada_por.username }}</p>
+                    <p class="text-slate-500">Gestor de Segurança da Informação (SecOps)</p>
+                </div>
+                <div class="space-y-1">
+                    <div class="border-b border-slate-400 pb-8"></div>
+                    <p class="font-bold text-slate-800">Auditoria Interna / Compliance (DPO / SOC)</p>
+                    <p class="text-slate-500">Validação de Conformidade & Trilha de Auditoria</p>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</body>
+</html>

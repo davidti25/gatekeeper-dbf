@@ -15,22 +15,39 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import permission_required
 from django.contrib.auth.mixins import PermissionRequiredMixin
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db.models import Count, Q
-from django.shortcuts import get_object_or_404, redirect
+from django.http import HttpResponseBadRequest
+from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.generic import DetailView, ListView, TemplateView
 
-from .forms import RevogacaoItemForm
+from .forms import (
+    AbrirCampanhaForm,
+    DecisaoItemForm,
+    DecisaoLoteForm,
+    ExecucaoRevogacaoRevisaoForm,
+    RevogacaoItemForm,
+)
 from .models import (
+    CampanhaRevisao,
     Colaborador,
     Departamento,
     ItemChecklistOffboarding,
+    ItemRevisao,
     ProcessoOffboarding,
     Sistema,
     VinculoAcesso,
 )
-from .services import iniciar_offboarding, revogar_item_checklist
+from .services import (
+    abrir_campanha,
+    encerrar_campanha,
+    executar_revogacao_revisao,
+    iniciar_offboarding,
+    registrar_decisao,
+    registrar_decisao_lote,
+    revogar_item_checklist,
+)
 
 logger = logging.getLogger("gatekeeper.audit")
 
@@ -407,3 +424,304 @@ class MatrizAcessoListView(PermissionRequiredMixin, ListView):
         context["current_status"] = self.request.GET.get("status", "")
         context["current_sistema"] = self.request.GET.get("sistema", "")
         return context
+
+
+# ==============================================================================
+# Fase 15: Revisão Periódica de Acessos (Recertificação & IDOR Mitigation)
+# ==============================================================================
+
+
+class CampanhaListView(PermissionRequiredMixin, ListView):
+    """Fase 15.4 / 15.5: Central de Campanhas de Revisão de Acesso."""
+
+    model = CampanhaRevisao
+    template_name = "governance/campanha_list.html"
+    context_object_name = "campanhas"
+    permission_required = "governance.view_campanharevisao"
+
+    def get_queryset(self):
+        return CampanhaRevisao.objects.select_related("criada_por").order_by("-aberta_em")
+
+
+class CampanhaPainelView(PermissionRequiredMixin, DetailView):
+    """Fase 15.5: Painel Executivo da Campanha para SecOps."""
+
+    model = CampanhaRevisao
+    template_name = "governance/campanha_painel.html"
+    context_object_name = "campanha"
+    permission_required = "governance.view_campanharevisao"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        campanha = self.object
+
+        # Itens e tarefas de revogação da TI
+        itens = campanha.itens.select_related(
+            "vinculo__colaborador", "vinculo__sistema", "revisor", "executado_por"
+        ).order_by("vinculo__colaborador__nome_completo")
+
+        tarefas_revogacao = itens.filter(decisao=ItemRevisao.DecisaoRevisao.REVOGAR)
+
+        # Estatísticas por revisor
+        revisores_stats = {}
+        for it in itens:
+            r = it.revisor
+            if r not in revisores_stats:
+                revisores_stats[r] = {"total": 0, "decididos": 0, "pendentes": 0}
+            revisores_stats[r]["total"] += 1
+            if it.decisao == ItemRevisao.DecisaoRevisao.PENDENTE:
+                revisores_stats[r]["pendentes"] += 1
+            else:
+                revisores_stats[r]["decididos"] += 1
+
+        for _r, st in revisores_stats.items():
+            st["pct"] = int((st["decididos"] / st["total"]) * 100) if st["total"] else 100
+
+        context["itens"] = itens
+        context["tarefas_revogacao"] = tarefas_revogacao
+        context["revisores_stats"] = revisores_stats
+        return context
+
+
+@permission_required("governance.abrir_campanha_revisao", raise_exception=True)
+def abrir_campanha_view(request):
+    """Fase 15.2 / 15.4: Abertura formal de campanha de revisão por Gestor SecOps."""
+    if request.method == "POST":
+        form = AbrirCampanhaForm(request.POST)
+        if form.is_valid():
+            try:
+                campanha = abrir_campanha(
+                    nome=form.cleaned_data["nome"],
+                    prazo=form.cleaned_data["prazo"],
+                    criada_por=request.user,
+                    descricao=form.cleaned_data.get("descricao", ""),
+                    escopo_criticidade_minima=form.cleaned_data.get("escopo_criticidade_minima") or None,
+                    escopo_departamentos=form.cleaned_data.get("escopo_departamentos") or None,
+                )
+                messages.success(
+                    request,
+                    f"Campanha '{campanha.nome}' iniciada com sucesso! {campanha.total_itens} vínculos ativos foram mapeados.",
+                )
+                return redirect("campanha_painel", pk=campanha.pk)
+            except (ValidationError, PermissionDenied) as e:
+                messages.error(request, str(e.message if hasattr(e, "message") else e))
+    else:
+        form = AbrirCampanhaForm()
+
+    return render(request, "governance/campanha_abrir.html", {"form": form})
+
+
+@permission_required("governance.abrir_campanha_revisao", raise_exception=True)
+def encerrar_campanha_view(request, pk):
+    """Fase 15.2: Encerramento de campanha de revisão."""
+    if request.method != "POST":
+        return redirect("campanha_painel", pk=pk)
+
+    campanha = get_object_or_404(CampanhaRevisao, pk=pk)
+    forcar = request.POST.get("forcar") == "true"
+
+    try:
+        encerrar_campanha(campanha_id=campanha.pk, usuario=request.user, forcar=forcar)
+        messages.success(request, f"Campanha '{campanha.nome}' encerrada com sucesso.")
+    except (ValidationError, PermissionDenied) as e:
+        messages.error(request, str(e.message if hasattr(e, "message") else e))
+
+    return redirect("campanha_painel", pk=pk)
+
+
+class CampanhaRelatorioView(PermissionRequiredMixin, DetailView):
+    """Fase 15.5: Relatório formal de auditoria para impressão."""
+
+    model = CampanhaRevisao
+    template_name = "governance/campanha_relatorio.html"
+    context_object_name = "campanha"
+    permission_required = "governance.view_campanharevisao"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        campanha = self.object
+        context["itens"] = campanha.itens.select_related(
+            "vinculo__colaborador",
+            "vinculo__colaborador__cargo",
+            "vinculo__colaborador__departamento",
+            "vinculo__sistema",
+            "vinculo__perfil_acesso",
+            "revisor",
+            "decidido_por",
+            "executado_por",
+        ).order_by("vinculo__colaborador__nome_completo")
+        return context
+
+
+class MinhasRevisoesView(PermissionRequiredMixin, ListView):
+    """
+    Fase 15.4 e 15.5: Lista de itens atribuídos ao revisor autenticado (segregação por objeto).
+    Filtra estritamente por revisor=request.user na consulta ao banco.
+    """
+
+    permission_required = "governance.revisar_acesso"
+    template_name = "governance/minhas_revisoes.html"
+    context_object_name = "itens"
+
+    def get_queryset(self):
+        campanha_id = self.request.GET.get("campanha")
+        qs = (
+            ItemRevisao.objects.filter(
+                revisor=self.request.user,
+                campanha__status=CampanhaRevisao.StatusCampanha.ABERTA,
+            )
+            .select_related(
+                "campanha",
+                "vinculo__colaborador",
+                "vinculo__colaborador__cargo",
+                "vinculo__colaborador__departamento",
+                "vinculo__sistema",
+                "vinculo__perfil_acesso",
+            )
+            .order_by("vinculo__colaborador__nome_completo", "vinculo__sistema__nome")
+        )
+        if campanha_id:
+            qs = qs.filter(campanha_id=campanha_id)
+        return qs
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        itens = list(context["itens"])
+        colaboradores = {}
+        for it in itens:
+            c = it.vinculo.colaborador
+            if c not in colaboradores:
+                colaboradores[c] = []
+            colaboradores[c].append(it)
+        context["colaboradores_agrupados"] = colaboradores
+        context["total_pendentes"] = sum(1 for it in itens if it.decisao == ItemRevisao.DecisaoRevisao.PENDENTE)
+        context["campanhas_ativas"] = CampanhaRevisao.objects.filter(
+            status=CampanhaRevisao.StatusCampanha.ABERTA,
+            itens__revisor=self.request.user,
+        ).distinct()
+        return context
+
+
+@permission_required("governance.revisar_acesso", raise_exception=True)
+def decidir_revisao_view(request, item_id):
+    """
+    Fase 15.4 / 15.5: Decisão individual de revisão.
+    Proteção contra IDOR: se o item pertencer a outro revisor, retorna HTTP 404 (não revela existência).
+    """
+    if request.method != "POST":
+        return redirect("minhas_revisoes")
+
+    # Autorização por objeto na query: 404 estrito se não pertencer a request.user
+    item = get_object_or_404(ItemRevisao, pk=item_id, revisor=request.user)
+
+    form = DecisaoItemForm(request.POST)
+    if not form.is_valid():
+        for errors in form.errors.values():
+            for err in errors:
+                messages.error(request, err)
+        return redirect("minhas_revisoes")
+
+    decisao = form.cleaned_data["decisao"]
+    justificativa = form.cleaned_data.get("justificativa", "")
+
+    try:
+        registrar_decisao(
+            item_id=item.pk,
+            decisao=decisao,
+            justificativa=justificativa,
+            usuario=request.user,
+        )
+        messages.success(
+            request,
+            f"Decisão '{item.get_decisao_display()}' registrada com sucesso para o acesso de {item.vinculo.colaborador.nome_completo} em {item.vinculo.sistema.nome}.",
+        )
+    except (ValidationError, PermissionDenied) as e:
+        messages.error(request, str(e.message if hasattr(e, "message") else e))
+
+    return redirect("minhas_revisoes")
+
+
+@permission_required("governance.revisar_acesso", raise_exception=True)
+def decidir_revisao_lote_view(request):
+    """
+    Fase 15.5: Decisão em lote estritamente para itens de criticidade BAIXA ou MÉDIA.
+    Se algum item for ALTA ou CRÍTICA, a operação inteira é recusada com 400.
+    """
+    if request.method != "POST":
+        return redirect("minhas_revisoes")
+
+    form = DecisaoLoteForm(request.POST)
+    if not form.is_valid():
+        for errors in form.errors.values():
+            for err in errors:
+                messages.error(request, err)
+        return redirect("minhas_revisoes")
+
+    ids_str = form.cleaned_data["itens_ids"]
+    try:
+        itens_ids = [int(i.strip()) for i in ids_str.split(",") if i.strip()]
+    except ValueError:
+        return HttpResponseBadRequest("Lista de IDs de revisão inválida.")
+
+    # Verifica se todos os itens pertencem ao revisor autenticado
+    itens_contagem = ItemRevisao.objects.filter(id__in=itens_ids, revisor=request.user).count()
+    if itens_contagem != len(itens_ids):
+        return HttpResponseBadRequest("Acesso negado a um ou mais itens selecionados.")
+
+    # Verifica se algum item possui criticidade ALTA ou CRÍTICA
+    possui_critico = ItemRevisao.objects.filter(
+        id__in=itens_ids,
+        vinculo__sistema__criticidade__in=[Sistema.Criticidade.ALTA, Sistema.Criticidade.CRITICA],
+    ).exists()
+    if possui_critico:
+        messages.error(
+            request,
+            "Operação em lote recusada: sistemas de criticidade ALTA ou CRÍTICA exigem decisão individual.",
+        )
+        return HttpResponseBadRequest("Itens de criticidade ALTA ou CRÍTICA não podem ser decididos em lote.")
+
+    decisao = form.cleaned_data["decisao"]
+    justificativa = form.cleaned_data.get("justificativa", "")
+
+    try:
+        registrar_decisao_lote(
+            itens_ids=itens_ids,
+            decisao=decisao,
+            justificativa=justificativa,
+            usuario=request.user,
+        )
+        messages.success(request, f"{len(itens_ids)} acessos revisados em lote com sucesso.")
+    except (ValidationError, PermissionDenied) as e:
+        messages.error(request, str(e.message if hasattr(e, "message") else e))
+        return HttpResponseBadRequest(str(e.message if hasattr(e, "message") else e))
+
+    return redirect("minhas_revisoes")
+
+
+@permission_required("governance.revogar_item_offboarding", raise_exception=True)
+def executar_revogacao_revisao_view(request, pk, item_id):
+    """Fase 15.3: Execução técnica de revogação decorrente de decisão REVOGAR pela TI."""
+    if request.method != "POST":
+        return redirect("campanha_painel", pk=pk)
+
+    campanha = get_object_or_404(CampanhaRevisao, pk=pk)
+    item = get_object_or_404(ItemRevisao, pk=item_id, campanha=campanha)
+
+    form = ExecucaoRevogacaoRevisaoForm(request.POST)
+    if not form.is_valid():
+        for errors in form.errors.values():
+            for err in errors:
+                messages.error(request, err)
+        return redirect("campanha_painel", pk=pk)
+
+    evidencia = form.cleaned_data["evidencia_revogacao"]
+    try:
+        executar_revogacao_revisao(item_id=item.pk, evidencia=evidencia, usuario=request.user)
+        messages.success(
+            request,
+            f"Revogação técnica executada com sucesso para o acesso de {item.vinculo.colaborador.nome_completo} no sistema {item.vinculo.sistema.nome}.",
+        )
+    except (ValidationError, PermissionDenied) as e:
+        messages.error(request, str(e.message if hasattr(e, "message") else e))
+
+    return redirect("campanha_painel", pk=pk)

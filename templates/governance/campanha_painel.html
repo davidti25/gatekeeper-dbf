@@ -1,0 +1,189 @@
+{% extends 'base.html' %}
+
+{% block title %}Painel da Campanha: {{ campanha.nome }} | GateKeeper-DBF{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Header -->
+    <div class="gk-page-header">
+        <div>
+            <div class="flex items-center space-x-2">
+                <span class="text-xs px-2 py-0.5 rounded font-mono font-semibold {% if campanha.status == 'ABERTA' %}bg-sky-500/20 text-sky-400 border border-sky-500/30{% else %}bg-emerald-500/20 text-emerald-400 border border-emerald-500/30{% endif %}">
+                    {{ campanha.get_status_display }}
+                </span>
+                {% if campanha.esta_vencida %}
+                <span class="text-xs px-2 py-0.5 rounded font-mono font-semibold bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                    VENCIDA
+                </span>
+                {% endif %}
+            </div>
+            <h1 class="gk-page-title mt-1.5">
+                <i data-lucide="activity" class="w-6 h-6 text-sky-400"></i>
+                <span>{{ campanha.nome }}</span>
+            </h1>
+            <p class="text-sm text-slate-400 mt-1">
+                Prazo limite: <span class="font-mono text-slate-200">{{ campanha.prazo|date:"d/m/Y" }}</span> | Aberta em: <span class="text-slate-300">{{ campanha.aberta_em|date:"d/m/Y H:i" }}</span> por <span class="text-slate-200">{{ campanha.criada_por.username }}</span>
+            </p>
+        </div>
+        <div class="flex items-center space-x-3">
+            <a href="{% url 'campanha_relatorio' campanha.pk %}" class="px-3.5 py-2 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 transition flex items-center space-x-1.5">
+                <i data-lucide="file-text" class="w-4 h-4"></i>
+                <span>Relatório de Auditoria</span>
+            </a>
+            {% if campanha.status == 'ABERTA' and perms.governance.abrir_campanha_revisao %}
+            <form method="post" action="{% url 'encerrar_campanha' campanha.pk %}">
+                {% csrf_token %}
+                <input type="hidden" name="forcar" value="true">
+                <button type="submit" data-confirm="Deseja encerrar esta campanha? Itens pendentes serão marcados como não revisados no relatório." class="px-3.5 py-2 rounded-lg text-xs font-semibold bg-rose-600/90 hover:bg-rose-500 text-white transition flex items-center space-x-1.5 shadow-md shadow-rose-600/20">
+                    <i data-lucide="lock" class="w-4 h-4"></i>
+                    <span>Encerrar Campanha</span>
+                </button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Indicadores Principais (KPIs) -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="gk-card">
+            <div class="flex items-center justify-between text-slate-400 mb-2">
+                <span class="text-xs uppercase font-semibold">Total de Vínculos</span>
+                <i data-lucide="layers" class="w-4 h-4 text-sky-400"></i>
+            </div>
+            <p class="text-2xl font-bold font-mono text-white">{{ campanha.total_itens }}</p>
+            <p class="text-[11px] text-slate-400 mt-1">Fotografia no momento da abertura</p>
+        </div>
+
+        <div class="gk-card">
+            <div class="flex items-center justify-between text-slate-400 mb-2">
+                <span class="text-xs uppercase font-semibold">Progresso Geral</span>
+                <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i>
+            </div>
+            <p class="text-2xl font-bold font-mono text-emerald-400">{{ campanha.percentual_concluido }}%</p>
+            <p class="text-[11px] text-slate-400 mt-1">{{ campanha.total_decididos }} decididos de {{ campanha.total_itens }}</p>
+        </div>
+
+        <div class="gk-card">
+            <div class="flex items-center justify-between text-slate-400 mb-2">
+                <span class="text-xs uppercase font-semibold">Acessos a Revogar</span>
+                <i data-lucide="user-x" class="w-4 h-4 text-rose-400"></i>
+            </div>
+            <p class="text-2xl font-bold font-mono text-rose-400">{{ campanha.total_revogados }}</p>
+            <p class="text-[11px] text-slate-400 mt-1">Decididos para desligamento</p>
+        </div>
+
+        <div class="gk-card">
+            <div class="flex items-center justify-between text-slate-400 mb-2">
+                <span class="text-xs uppercase font-semibold">Pendentes de Revisão</span>
+                <i data-lucide="clock" class="w-4 h-4 text-amber-400"></i>
+            </div>
+            <p class="text-2xl font-bold font-mono text-amber-400">{{ campanha.total_pendentes }}</p>
+            <p class="text-[11px] text-slate-400 mt-1">Aguardando decisão do gestor</p>
+        </div>
+    </div>
+
+    <!-- Tarefas de Revogação Técnica da TI (Fase 15.3) -->
+    {% if tarefas_revogacao %}
+    <div class="gk-panel p-5 space-y-4">
+        <div class="flex items-center justify-between">
+            <div>
+                <h2 class="text-sm font-bold text-white flex items-center space-x-2">
+                    <i data-lucide="alert-triangle" class="w-4 h-4 text-rose-400"></i>
+                    <span>Fila de Revogação Técnica (TI)</span>
+                </h2>
+                <p class="text-xs text-slate-400 mt-0.5">
+                    Acessos com decisão REVOGAR pelo gestor. A remoção real no sistema exige evidência e responsabilidade da TI.
+                </p>
+            </div>
+            <span class="px-2.5 py-1 rounded text-xs font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                {{ tarefas_revogacao.count }} ação(ões)
+            </span>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="gk-table">
+                <thead class="gk-table-head">
+                    <tr>
+                        <th class="px-4 py-3">Colaborador</th>
+                        <th class="px-4 py-3">Sistema / Conta</th>
+                        <th class="px-4 py-3">Revisor</th>
+                        <th class="px-4 py-3">Justificativa do Revisor</th>
+                        <th class="px-4 py-3">Status TI</th>
+                        <th class="px-4 py-3 text-right">Ação Operacional</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800/80">
+                    {% for tarefa in tarefas_revogacao %}
+                    <tr class="gk-table-row">
+                        <td class="px-4 py-3 font-semibold text-white">
+                            {{ tarefa.vinculo.colaborador.nome_completo }}
+                        </td>
+                        <td class="px-4 py-3 text-xs">
+                            <span class="text-sky-300">{{ tarefa.vinculo.sistema.nome }}</span>
+                            <span class="text-slate-400 block font-mono">{{ tarefa.vinculo.identificador_conta }}</span>
+                        </td>
+                        <td class="px-4 py-3 text-xs text-slate-300">
+                            {{ tarefa.revisor.username }}
+                        </td>
+                        <td class="px-4 py-3 text-xs text-slate-400 max-w-xs truncate" title="{{ tarefa.justificativa }}">
+                            {{ tarefa.justificativa }}
+                        </td>
+                        <td class="px-4 py-3 text-xs">
+                            {% if tarefa.tarefa_revogada %}
+                                <span class="gk-badge gk-badge--verde flex items-center space-x-1">
+                                    <i data-lucide="check" class="w-3 h-3"></i>
+                                    <span>Revogado: {{ tarefa.evidencia_revogacao|truncatechars:20 }}</span>
+                                </span>
+                            {% else %}
+                                <span class="gk-badge gk-badge--vermelho">Pendente de Execução</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-right">
+                            {% if not tarefa.tarefa_revogada and perms.governance.revogar_item_offboarding %}
+                            <form method="post" action="{% url 'executar_revogacao_revisao' campanha.pk tarefa.pk %}" class="flex items-center justify-end space-x-2">
+                                {% csrf_token %}
+                                <input type="text" name="evidencia_revogacao" placeholder="Ex: Chamado #8821" required class="gk-input-sm text-xs w-36">
+                                <button type="submit" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white transition flex items-center space-x-1">
+                                    <i data-lucide="shield-alert" class="w-3 h-3"></i>
+                                    <span>Concluir</span>
+                                </button>
+                            </form>
+                            {% elif tarefa.tarefa_revogada %}
+                                <span class="text-xs text-slate-400 font-mono">Por {{ tarefa.executado_por.username }} em {{ tarefa.executado_em|date:"d/m/Y H:i" }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Andamento por Revisor -->
+    <div class="gk-panel p-5 space-y-4">
+        <h2 class="text-sm font-bold text-white flex items-center space-x-2">
+            <i data-lucide="users" class="w-4 h-4 text-sky-400"></i>
+            <span>Andamento por Revisor Designado</span>
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {% for rev, st in revisores_stats.items %}
+            <div class="p-3.5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-2">
+                <div class="flex items-center justify-between">
+                    <span class="font-semibold text-xs text-white font-mono">{{ rev.username }}</span>
+                    <span class="text-xs font-mono font-bold {% if st.pct == 100 %}text-emerald-400{% else %}text-amber-400{% endif %}">
+                        {{ st.pct }}%
+                    </span>
+                </div>
+                <progress class="gk-progress {% if st.pct == 100 %}gk-progress--done{% endif %}" value="{{ st.pct }}" max="100" aria-label="Progresso do revisor: {{ st.pct }}%">{{ st.pct }}%</progress>
+                <div class="flex justify-between text-[11px] text-slate-400">
+                    <span>{{ st.decididos }} decididos</span>
+                    <span class="{% if st.pendentes > 0 %}text-amber-400{% endif %}">{{ st.pendentes }} pendentes</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

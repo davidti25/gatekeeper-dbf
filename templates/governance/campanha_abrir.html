@@ -1,0 +1,102 @@
+{% extends 'base.html' %}
+
+{% block title %}Iniciar Nova Campanha de Revisão | GateKeeper-DBF{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto space-y-6">
+
+    <!-- Header -->
+    <div class="gk-page-header">
+        <div>
+            <h1 class="gk-page-title">
+                <i data-lucide="plus-circle" class="w-6 h-6 text-sky-400"></i>
+                <span>Abertura de Campanha de Revisão de Acessos</span>
+            </h1>
+            <p class="text-sm text-slate-400 mt-1">
+                Tira uma fotografia auditável dos vínculos ativos no escopo definido e atribui revisores conforme a hierarquia.
+            </p>
+        </div>
+        <div>
+            <a href="{% url 'campanha_list' %}" class="px-3.5 py-2 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex items-center space-x-1.5">
+                <i data-lucide="arrow-left" class="w-4 h-4"></i>
+                <span>Voltar</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Form Panel -->
+    <div class="gk-panel p-6">
+        <form method="post" class="space-y-5">
+            {% csrf_token %}
+
+            <div>
+                <label for="{{ form.nome.id_for_label }}" class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                    Nome da Campanha <span class="text-rose-400">*</span>
+                </label>
+                {{ form.nome }}
+                {% if form.nome.errors %}
+                <p class="text-xs text-rose-400 mt-1">{{ form.nome.errors.0 }}</p>
+                {% endif %}
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label for="{{ form.prazo.id_for_label }}" class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                        Prazo Limite para Decisões <span class="text-rose-400">*</span>
+                    </label>
+                    {{ form.prazo }}
+                    {% if form.prazo.errors %}
+                    <p class="text-xs text-rose-400 mt-1">{{ form.prazo.errors.0 }}</p>
+                    {% endif %}
+                </div>
+
+                <div>
+                    <label for="{{ form.escopo_criticidade_minima.id_for_label }}" class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                        Criticidade Mínima do Escopo
+                    </label>
+                    {{ form.escopo_criticidade_minima }}
+                    <p class="text-[11px] text-slate-400 mt-1">Selecione para restringir (ex: apenas ALTA e CRÍTICA).</p>
+                </div>
+            </div>
+
+            <div>
+                <label for="{{ form.descricao.id_for_label }}" class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                    Descrição / Justificativa do Ciclo
+                </label>
+                {{ form.descricao }}
+            </div>
+
+            <div>
+                <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                    Departamentos no Escopo (opcional)
+                </label>
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 p-3 bg-slate-900/60 rounded-lg border border-slate-800 text-xs text-slate-300 max-h-48 overflow-y-auto">
+                    {{ form.escopo_departamentos }}
+                </div>
+                <p class="text-[11px] text-slate-400 mt-1">Se nenhum for selecionado, todos os departamentos entram no escopo.</p>
+            </div>
+
+            <!-- Alerta de Segurança -->
+            <div class="p-3.5 rounded-lg bg-sky-500/10 border border-sky-500/20 text-xs text-sky-300 flex items-start space-x-2.5">
+                <i data-lucide="shield-check" class="w-4 h-4 text-sky-400 mt-0.5 shrink-0"></i>
+                <div class="space-y-1 leading-relaxed">
+                    <p class="font-semibold text-sky-200">Garantias de Segregação e Fotografia Auditável</p>
+                    <p class="text-sky-300/90">
+                        A abertura gera uma fotografia imutável dos vínculos ativos. A regra de segregação impede que qualquer revisor decida sobre o próprio acesso. Itens sem gestor direto sobem automaticamente para o dono do sistema ou Gestor SecOps.
+                    </p>
+                </div>
+            </div>
+
+            <div class="flex items-center justify-end space-x-3 pt-3 border-t border-slate-800">
+                <a href="{% url 'campanha_list' %}" class="px-4 py-2 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition">
+                    Cancelar
+                </a>
+                <button type="submit" class="px-5 py-2.5 rounded-lg text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white transition-all shadow-md shadow-sky-600/20 flex items-center space-x-1.5">
+                    <i data-lucide="camera" class="w-4 h-4"></i>
+                    <span>Tirar Fotografia e Iniciar Campanha</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

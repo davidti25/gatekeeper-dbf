@@ -12,10 +12,12 @@ from django.utils import timezone
 
 from apps.governance import urls as gov_urls
 from apps.governance.models import (
+    CampanhaRevisao,
     Cargo,
     Colaborador,
     Departamento,
     ItemChecklistOffboarding,
+    ItemRevisao,
     Localidade,
     PerfilAcesso,
     ProcessoOffboarding,
@@ -247,6 +249,18 @@ class CatracaERotasProtegidasTests(TestCase):
             vinculo_acesso=self.vinculo,
             status=ItemChecklistOffboarding.StatusItem.PENDENTE,
         )
+        self.campanha = CampanhaRevisao.objects.create(
+            nome="Campanha Catraca",
+            prazo=timezone.localdate() + timezone.timedelta(days=15),
+            criada_por=self.user_analista,
+            status=CampanhaRevisao.StatusCampanha.ABERTA,
+        )
+        self.item_revisao = ItemRevisao.objects.create(
+            campanha=self.campanha,
+            vinculo=self.vinculo,
+            revisor=self.user_analista,
+            decisao=ItemRevisao.DecisaoRevisao.PENDENTE,
+        )
 
     def test_52_dashboard_exige_permissao_estrita_view_colaborador(self):
         """5.2: DashboardView exige 'governance.view_colaborador' e bloqueia usuário autenticado sem grupos."""
@@ -273,6 +287,15 @@ class CatracaERotasProtegidasTests(TestCase):
             "offboarding_detail": {"pk": self.processo.pk},
             "revogar_item_offboarding": {"pk": self.processo.pk, "item_id": self.item_checklist.pk},
             "offboarding_relatorio": {"pk": self.processo.pk},
+            "campanha_list": {},
+            "abrir_campanha": {},
+            "campanha_painel": {"pk": self.campanha.pk},
+            "encerrar_campanha": {"pk": self.campanha.pk},
+            "campanha_relatorio": {"pk": self.campanha.pk},
+            "executar_revogacao_revisao": {"pk": self.campanha.pk, "item_id": self.item_revisao.pk},
+            "minhas_revisoes": {},
+            "decidir_revisao": {"item_id": self.item_revisao.pk},
+            "decidir_revisao_lote": {},
         }
 
         # Garante que nenhuma rota futura seja criada sem estar cadastrada no teste-catraca
@@ -298,8 +321,18 @@ class MatrizAutorizacaoTests(TestCase):
     ROTAS_ESCRITA = {
         "iniciar_offboarding": "governance.iniciar_offboarding",
         "revogar_item_offboarding": "governance.revogar_item_offboarding",
+        "abrir_campanha": "governance.abrir_campanha_revisao",
+        "encerrar_campanha": "governance.abrir_campanha_revisao",
+        "decidir_revisao": "governance.revisar_acesso",
+        "decidir_revisao_lote": "governance.revisar_acesso",
+        "executar_revogacao_revisao": "governance.revogar_item_offboarding",
     }
-    SOMENTE_LEITURA_NO_ADMIN = {"governance.ProcessoOffboarding", "governance.ItemChecklistOffboarding"}
+    SOMENTE_LEITURA_NO_ADMIN = {
+        "governance.ProcessoOffboarding",
+        "governance.ItemChecklistOffboarding",
+        "governance.CampanhaRevisao",
+        "governance.ItemRevisao",
+    }
 
     def setUp(self):
         setup_fase10_fixtures(self)
@@ -407,7 +440,7 @@ class MatrizAutorizacaoTests(TestCase):
             for nome, user in usuarios.items():
                 with self.subTest(modelo=opts.label, usuario=nome):
                     self._post_negado(user, url, {}, f"{nome} reverter histórico de {opts.label}")
-        self.assertEqual(modelos_com_historico, 5)
+        self.assertEqual(modelos_com_historico, 7)
 
     def test_aplicacao_escrita_exige_permissao_e_leitura_recusa_post(self):
         """Telas de escrita: sem a permissão específica -> 403 e banco intacto. Telas de leitura: POST recusado (405)."""
@@ -422,6 +455,15 @@ class MatrizAutorizacaoTests(TestCase):
             "offboarding_detail": {"pk": self.processo.pk},
             "revogar_item_offboarding": {"pk": self.processo.pk, "item_id": self.item.pk},
             "offboarding_relatorio": {"pk": self.processo.pk},
+            "campanha_list": {},
+            "abrir_campanha": {},
+            "campanha_painel": {"pk": self.campanha.pk},
+            "encerrar_campanha": {"pk": self.campanha.pk},
+            "campanha_relatorio": {"pk": self.campanha.pk},
+            "executar_revogacao_revisao": {"pk": self.campanha.pk, "item_id": self.item_revisao.pk},
+            "minhas_revisoes": {},
+            "decidir_revisao": {"item_id": self.item_revisao.pk},
+            "decidir_revisao_lote": {},
         }
         self.assertEqual(
             {p.name for p in gov_urls.urlpatterns},

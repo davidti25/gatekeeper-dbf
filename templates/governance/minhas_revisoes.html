@@ -1,0 +1,191 @@
+{% extends 'base.html' %}
+
+{% block title %}Minhas Revisões de Acesso | GateKeeper-DBF{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Header -->
+    <div class="gk-page-header">
+        <div>
+            <h1 class="gk-page-title">
+                <i data-lucide="check-square" class="w-6 h-6 text-sky-400"></i>
+                <span>Minhas Revisões de Acesso</span>
+            </h1>
+            <p class="text-sm text-slate-400 mt-1">
+                Valide os acessos corporativos dos seus liderados e sistemas sob sua responsabilidade.
+            </p>
+        </div>
+        <div class="flex items-center space-x-3">
+            <span class="px-3 py-1.5 rounded-lg text-xs font-mono font-bold {% if total_pendentes > 0 %}bg-amber-500/20 text-amber-300 border border-amber-500/30{% else %}bg-emerald-500/20 text-emerald-300 border border-emerald-500/30{% endif %}">
+                {{ total_pendentes }} pendência(s) ativa(s)
+            </span>
+        </div>
+    </div>
+
+    <!-- Regra de Decisão Didática (SOC/Auditoria) -->
+    <div class="p-3.5 rounded-lg bg-slate-900/80 border border-slate-800 text-xs text-slate-300 flex items-start space-x-2.5">
+        <i data-lucide="info" class="w-4 h-4 text-sky-400 mt-0.5 shrink-0"></i>
+        <div class="space-y-1">
+            <p class="font-semibold text-white">Diretrizes de Revisão e Conformidade (CIS 5.3):</p>
+            <p class="text-slate-400">
+                • <strong>Manter:</strong> confirme se o colaborador ainda necessita do acesso para o exercício de sua função.<br>
+                • <strong>Revogar:</strong> para desligamentos parciais, mudança de função ou acessos órfãos. Exige justificativa (mín. 20 caracteres).<br>
+                • <strong>Sistemas Críticos:</strong> a opção de manter exige justificativa formal de necessidade (mín. 20 caracteres).
+            </p>
+        </div>
+    </div>
+
+    <!-- Seção de Decisão em Lote (Fase 15.5: apenas BAIXA e MEDIA) -->
+    <div class="gk-panel p-4">
+        <details class="group">
+            <summary class="flex items-center justify-between cursor-pointer text-xs font-semibold text-sky-400 hover:text-sky-300">
+                <span class="flex items-center space-x-2">
+                    <i data-lucide="check-check" class="w-4 h-4"></i>
+                    <span>Decisão em Lote para Acessos de Criticidade Baixa / Média</span>
+                </span>
+                <i data-lucide="chevron-down" class="w-4 h-4 transition-transform group-open:rotate-180"></i>
+            </summary>
+            <form id="form-revisao-lote" method="post" action="{% url 'decidir_revisao_lote' %}" class="mt-4 pt-4 border-t border-slate-800 space-y-3">
+                {% csrf_token %}
+                <p class="text-xs text-slate-400">
+                    Selecione as caixas de seleção dos acessos abaixo e aplique uma decisão conjunta com justificativa unificada. Acessos de criticidade <strong>ALTA</strong> ou <strong>CRÍTICA</strong> serão recusados se incluídos no lote.
+                </p>
+                <input type="hidden" name="itens_ids" id="lote_itens_ids" value="">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">Decisão em Lote</label>
+                        <select name="decisao" class="gk-input-sm w-full">
+                            <option value="MANTER">Manter Acessos Selecionados</option>
+                            <option value="REVOGAR">Revogar Acessos Selecionados</option>
+                        </select>
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">Justificativa Comum</label>
+                        <input type="text" name="justificativa" placeholder="Justificativa técnica (mín. 20 caracteres se revogar)" class="gk-input-sm w-full">
+                    </div>
+                </div>
+                <div class="flex justify-end pt-2">
+                    <button type="submit" class="px-4 py-2 rounded-lg text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white transition flex items-center space-x-1.5">
+                        <i data-lucide="send" class="w-3.5 h-3.5"></i>
+                        <span>Aplicar aos Acessos Selecionados</span>
+                    </button>
+                </div>
+            </form>
+        </details>
+    </div>
+
+    <!-- Lista Agrupada por Colaborador -->
+    <div class="space-y-6">
+        {% for colab, itens_colab in colaboradores_agrupados.items %}
+        <div class="gk-panel overflow-hidden">
+            <!-- Cabeçalho do Colaborador -->
+            <div class="px-5 py-3.5 bg-slate-900/80 border-b border-slate-800 flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center font-bold text-xs text-sky-400">
+                        {{ colab.nome_completo|slice:":2"|upper }}
+                    </div>
+                    <div>
+                        <h2 class="font-bold text-sm text-white">{{ colab.nome_completo }}</h2>
+                        <p class="text-xs text-slate-400">
+                            {{ colab.cargo.nome }} • {{ colab.departamento.sigla }} • <span class="font-mono text-slate-400">{{ colab.email_corporativo }}</span>
+                        </p>
+                    </div>
+                </div>
+                <span class="text-xs text-slate-400 font-mono">
+                    {{ itens_colab|length }} acesso(s)
+                </span>
+            </div>
+
+            <!-- Tabela de Acessos do Colaborador -->
+            <div class="overflow-x-auto">
+                <table class="gk-table">
+                    <thead class="gk-table-head">
+                        <tr>
+                            <th class="w-10 px-4 py-3 text-center">
+                                <input type="checkbox" class="rounded bg-slate-800 border-slate-700 text-sky-500 select-all-colab" aria-label="Selecionar todos">
+                            </th>
+                            <th class="px-4 py-3">Sistema / Ativo</th>
+                            <th class="px-4 py-3">Perfil / Privilégio</th>
+                            <th class="px-4 py-3">Conta / Login</th>
+                            <th class="px-4 py-3">Criticidade</th>
+                            <th class="px-4 py-3">Status Atual</th>
+                            <th class="px-4 py-3 text-right">Decisão Individual</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800/80">
+                        {% for item in itens_colab %}
+                        <tr class="gk-table-row">
+                            <td class="px-4 py-3 text-center">
+                                {% if item.decisao == 'PENDENTE' and item.vinculo.sistema.criticidade != 'CRITICA' and item.vinculo.sistema.criticidade != 'ALTA' %}
+                                <input type="checkbox" value="{{ item.pk }}" class="lote-checkbox rounded bg-slate-800 border-slate-700 text-sky-500" aria-label="Selecionar item para lote">
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 font-semibold text-white">
+                                {{ item.vinculo.sistema.nome }}
+                            </td>
+                            <td class="px-4 py-3 text-xs text-slate-300">
+                                {{ item.vinculo.perfil_acesso.nome|default:"Perfil Base / Padrão" }}
+                            </td>
+                            <td class="px-4 py-3 text-xs font-mono text-slate-300">
+                                {{ item.vinculo.identificador_conta }}
+                            </td>
+                            <td class="px-4 py-3">
+                                {% if item.vinculo.sistema.criticidade == 'CRITICA' %}
+                                    <span class="gk-badge gk-badge--vermelho">Crítica</span>
+                                {% elif item.vinculo.sistema.criticidade == 'ALTA' %}
+                                    <span class="gk-badge gk-badge--laranja">Alta</span>
+                                {% elif item.vinculo.sistema.criticidade == 'MEDIA' %}
+                                    <span class="gk-badge gk-badge--ambar">Média</span>
+                                {% else %}
+                                    <span class="gk-badge gk-badge--verde">Baixa</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3">
+                                {% if item.decisao == 'MANTER' %}
+                                    <span class="gk-badge gk-badge--verde">Mantido</span>
+                                {% elif item.decisao == 'REVOGAR' %}
+                                    <span class="gk-badge gk-badge--vermelho">Revogação Solicitada</span>
+                                {% else %}
+                                    <span class="gk-badge gk-badge--ambar">Pendente</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 text-right">
+                                {% if item.decisao == 'PENDENTE' %}
+                                <form method="post" action="{% url 'decidir_revisao' item.pk %}" class="flex items-center justify-end space-x-2">
+                                    {% csrf_token %}
+                                    <input type="text" name="justificativa" placeholder="Justificativa (mín. 20 carac.)" class="gk-input-sm text-xs w-44">
+                                    <button type="submit" name="decisao" value="MANTER" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600/90 hover:bg-emerald-500 text-white transition flex items-center space-x-1" title="Manter Acesso">
+                                        <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                                        <span>Manter</span>
+                                    </button>
+                                    <button type="submit" name="decisao" value="REVOGAR" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-rose-600/90 hover:bg-rose-500 text-white transition flex items-center space-x-1" title="Revogar Acesso">
+                                        <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                                        <span>Revogar</span>
+                                    </button>
+                                </form>
+                                {% else %}
+                                <div class="text-xs text-slate-400 font-mono">
+                                    Decidido em {{ item.decidido_em|date:"d/m/Y H:i" }}
+                                    {% if item.justificativa %}
+                                    <span class="block text-slate-500 truncate max-w-xs" title="{{ item.justificativa }}">"{{ item.justificativa }}"</span>
+                                    {% endif %}
+                                </div>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% empty %}
+        <div class="gk-panel p-10 text-center text-slate-400 text-sm">
+            <i data-lucide="check-circle" class="w-10 h-10 text-emerald-400 mx-auto mb-2 opacity-80"></i>
+            <p class="font-semibold text-white">Tudo em dia!</p>
+            <p class="text-xs text-slate-500 mt-1">Você não possui pendências de revisão atribuídas no momento.</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

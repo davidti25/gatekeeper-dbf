@@ -13,10 +13,12 @@ from django.utils.html import format_html
 from simple_history.admin import SimpleHistoryAdmin
 
 from .models import (
+    CampanhaRevisao,
     Cargo,
     Colaborador,
     Departamento,
     ItemChecklistOffboarding,
+    ItemRevisao,
     Localidade,
     PerfilAcesso,
     ProcessoOffboarding,
@@ -287,3 +289,81 @@ class ItemChecklistOffboardingAdmin(SomenteLeituraAdminMixin, HistoricoSomenteLe
     list_display = ("processo", "vinculo_acesso", "status", "revogado", "data_revogacao", "responsavel_revogacao")
     list_filter = ("status", "revogado")
     search_fields = ("processo__colaborador__nome_completo", "vinculo_acesso__sistema__nome", "evidencia_revogacao")
+
+
+class ItemRevisaoInline(SomenteLeituraAdminMixin, admin.TabularInline):
+    model = ItemRevisao
+    extra = 0
+    fields = ("vinculo", "revisor", "decisao", "justificativa", "decidido_em", "tarefa_revogada")
+    readonly_fields = fields
+
+
+@admin.register(CampanhaRevisao)
+class CampanhaRevisaoAdmin(SomenteLeituraAdminMixin, HistoricoSomenteLeituraAdmin):
+    class Media:
+        css = ADMIN_MEDIA_CSS
+
+    list_display = (
+        "nome",
+        "exibir_status",
+        "exibir_progresso",
+        "prazo",
+        "aberta_em",
+        "criada_por",
+    )
+    list_filter = ("status", "escopo_criticidade_minima")
+    search_fields = ("nome", "descricao")
+    inlines = [ItemRevisaoInline]
+
+    @admin.display(description="Progresso")
+    def exibir_progresso(self, obj):
+        pct = obj.percentual_concluido
+        classe = "gk-admin-progress gk-admin-progress--done" if pct == 100 else "gk-admin-progress"
+        return format_html(
+            '<progress class="{}" value="{}" max="100" aria-label="{}%"></progress>'
+            '<span class="gk-admin-progress-label">{}% ({}/{})</span>',
+            classe,
+            pct,
+            pct,
+            pct,
+            obj.total_decididos,
+            obj.total_itens,
+        )
+
+    @admin.display(description="Status")
+    def exibir_status(self, obj):
+        cores = {
+            CampanhaRevisao.StatusCampanha.ABERTA: "azul",
+            CampanhaRevisao.StatusCampanha.ENCERRADA: "verde",
+        }
+        cor = cores.get(obj.status, "neutro")
+        return _badge(obj.get_status_display(), cor)
+
+
+@admin.register(ItemRevisao)
+class ItemRevisaoAdmin(SomenteLeituraAdminMixin, HistoricoSomenteLeituraAdmin):
+    list_display = (
+        "campanha",
+        "vinculo",
+        "revisor",
+        "exibir_decisao",
+        "decidido_em",
+        "tarefa_revogada",
+    )
+    list_filter = ("decisao", "tarefa_revogada", "campanha")
+    search_fields = (
+        "campanha__nome",
+        "vinculo__colaborador__nome_completo",
+        "vinculo__sistema__nome",
+        "revisor__username",
+    )
+
+    @admin.display(description="Decisão")
+    def exibir_decisao(self, obj):
+        cores = {
+            ItemRevisao.DecisaoRevisao.MANTER: "verde",
+            ItemRevisao.DecisaoRevisao.REVOGAR: "vermelho",
+            ItemRevisao.DecisaoRevisao.PENDENTE: "ambar",
+        }
+        cor = cores.get(obj.decisao, "neutro")
+        return _badge(obj.get_decisao_display(), cor)

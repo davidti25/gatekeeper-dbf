@@ -11,8 +11,9 @@ from allauth.mfa.totp.forms import ActivateTOTPForm as AllauthActivateTOTPForm
 from allauth.mfa.totp.internal import auth as totp_auth
 from django import forms
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
-from .models import ItemChecklistOffboarding, Sistema
+from .models import Departamento, ItemChecklistOffboarding, ItemRevisao, Sistema
 
 
 class GateKeeperActivateTOTPForm(AllauthActivateTOTPForm):
@@ -141,3 +142,107 @@ class RevogacaoItemForm(forms.Form):
                 )
 
         return cleaned_data
+
+
+class AbrirCampanhaForm(forms.Form):
+    """Fase 15.2: Formulário para abertura de uma nova campanha de revisão de acessos."""
+
+    nome = forms.CharField(
+        max_length=150,
+        label="Nome da Campanha",
+        widget=forms.TextInput(attrs={"placeholder": "Ex: Revisão Periódica Q4 2026", "class": "gk-input"}),
+    )
+    prazo = forms.DateField(
+        label="Prazo Limite",
+        widget=forms.DateInput(attrs={"type": "date", "class": "gk-input"}),
+    )
+    descricao = forms.CharField(
+        required=False,
+        label="Descrição / Motivo",
+        widget=forms.Textarea(attrs={"rows": 3, "class": "gk-input"}),
+    )
+    escopo_criticidade_minima = forms.ChoiceField(
+        required=False,
+        label="Criticidade Mínima",
+        choices=[("", "Todas as criticidades")] + list(Sistema.Criticidade.choices),
+        widget=forms.Select(attrs={"class": "gk-input"}),
+    )
+    escopo_departamentos = forms.ModelMultipleChoiceField(
+        queryset=Departamento.objects.filter(ativo=True),
+        required=False,
+        label="Departamentos no Escopo (opcional)",
+        widget=forms.CheckboxSelectMultiple(),
+    )
+
+    def clean_prazo(self):
+        prazo = self.cleaned_data.get("prazo")
+        if prazo and prazo < timezone.localdate():
+            raise ValidationError("O prazo da campanha não pode ser uma data retroativa.")
+        return prazo
+
+
+class DecisaoItemForm(forms.Form):
+    """Fase 15.2: Formulário individual para revisor decidir MANTER ou REVOGAR um acesso."""
+
+    decisao = forms.ChoiceField(
+        choices=[
+            (ItemRevisao.DecisaoRevisao.MANTER, "Manter Acesso"),
+            (ItemRevisao.DecisaoRevisao.REVOGAR, "Revogar Acesso"),
+        ],
+        widget=forms.Select(attrs={"class": "gk-input-sm"}),
+    )
+    justificativa = forms.CharField(
+        required=False,
+        widget=forms.Textarea(
+            attrs={
+                "rows": 2,
+                "placeholder": "Justificativa obrigatória (mín. 20 caracteres) para REVOGAR e para MANTER em sistema CRÍTICO",
+                "class": "gk-input-sm",
+            }
+        ),
+    )
+
+
+class DecisaoLoteForm(forms.Form):
+    """Fase 15.5: Formulário para decisão em lote (apenas BAIXA/MEDIA)."""
+
+    itens_ids = forms.CharField(widget=forms.HiddenInput())
+    decisao = forms.ChoiceField(
+        choices=[
+            (ItemRevisao.DecisaoRevisao.MANTER, "Manter Acessos Selecionados"),
+            (ItemRevisao.DecisaoRevisao.REVOGAR, "Revogar Acessos Selecionados"),
+        ],
+        widget=forms.Select(attrs={"class": "gk-input"}),
+    )
+    justificativa = forms.CharField(
+        required=False,
+        widget=forms.Textarea(
+            attrs={
+                "rows": 2,
+                "placeholder": "Justificativa comum para os acessos em lote (mín. 20 caracteres se revogar)",
+                "class": "gk-input",
+            }
+        ),
+    )
+
+
+class ExecucaoRevogacaoRevisaoForm(forms.Form):
+    """Fase 15.3: Formulário para a TI registrar evidência de revogação decorrente de revisão."""
+
+    evidencia_revogacao = forms.CharField(
+        label="Evidência da Revogação (Ticket / Log)",
+        widget=forms.TextInput(
+            attrs={
+                "placeholder": "Ex: Ticket ITSM #12345 - Acesso removido no IAM",
+                "class": "gk-input",
+            }
+        ),
+    )
+
+    def clean_evidencia_revogacao(self):
+        evidencia = self.cleaned_data.get("evidencia_revogacao", "").strip()
+        if not evidencia:
+            raise ValidationError("A evidência da revogação é obrigatória.")
+        if evidencia.lower() in ["ok", "teste", "removido", "revogado"]:
+            raise ValidationError("Informe uma evidência válida e auditável (ex: chamado ou ticket).")
+        return evidencia
