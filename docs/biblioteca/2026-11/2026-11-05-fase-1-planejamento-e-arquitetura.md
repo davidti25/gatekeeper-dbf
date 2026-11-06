@@ -9,7 +9,7 @@
 
 ## 1. 🎯 Contexto e Justificativa do Negócio
 
-A empresa identificou um gap crítico no ciclo de vida de identidades: no momento do desligamento de colaboradores (offboarding), não há visibilidade centralizada sobre quais sistemas, acessos, permissões e privilégios estavam concedidos àquele profissional. 
+A empresa identificou um gap crítico no ciclo de vida de identidades: no momento do desligamento de colaboradores (offboarding), não há visibilidade centralizada sobre quais sistemas, acessos, permissões e privilégios estavam concedidos àquele profissional.
 
 Da mesma forma, no momento da admissão (onboarding), os líderes e o time de TI não dispõem de uma matriz clara do que conceder para cada cargo e filial, gerando atrasos na operação ou concessão excessiva de privilégios.
 
@@ -54,7 +54,7 @@ Para garantir que o repositório no GitHub possa ser compartilhado de forma prof
 ## 5. 📦 Ambiente de Desenvolvimento Configurado
 
 * **Ambiente Virtual (Virtualenv):** `venv` inicializado com Python 3.14.
-* **Gerenciador de Dependências:** Criado [`requirements.txt`](file:///home/davidbf/dev/GateKeeper-DBF/requirements.txt) com:
+* **Gerenciador de Dependências:** Criado [`requirements.txt`](../../../requirements.txt) com:
   * `Django 5.1.15` (Framework web robusto com defesas OWASP nativas).
   * `django-environ 0.14.0` (Gerenciamento seguro de segredos e variáveis de ambiente).
 * **Isolamento Confirmado:** Todas as dependências instaladas estritamente dentro de `venv/`, sem poluir o sistema operacional local.
@@ -66,4 +66,3 @@ Para garantir que o repositório no GitHub possa ser compartilhado de forma prof
 1. Inicialização da estrutura base do projeto Django (`core`).
 2. Configuração de segurança no `settings.py` com carregamento de variáveis via `.env` (chaves secretas protegidas).
 3. Criação do app de gerenciamento de identidades (`iam` / `access_manager`) para abrigar a modelagem de Colaboradores, Funções, Localidades e Matriz de Acessos.
-

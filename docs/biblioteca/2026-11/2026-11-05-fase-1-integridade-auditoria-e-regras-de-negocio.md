@@ -24,19 +24,19 @@
 ### 1.2 Rastreabilidade Temporal & Trilha de Auditoria (`django-simple-history`)
 * **Solução Implementada:**
   * Instalada a biblioteca `django-simple-history` (v3.13.0) e atualizado o `requirements.txt`.
-  * Registrado `'simple_history'` em `INSTALLED_APPS` e `'simple_history.middleware.HistoryRequestMiddleware'` em `MIDDLEWARE` no [`core/settings.py`](file:///home/davidbf/dev/GateKeeper-DBF/core/settings.py).
+  * Registrado `'simple_history'` em `INSTALLED_APPS` e `'simple_history.middleware.HistoryRequestMiddleware'` em `MIDDLEWARE` no [`core/settings.py`](../../../core/settings.py).
   * Adicionado `HistoricalRecords()` nos modelos críticos:
     * `Colaborador`
     * `Sistema`
     * `VinculoAcesso`
     * `ProcessoOffboarding`
     * `ItemChecklistOffboarding`
-  * Integrado `SimpleHistoryAdmin` nos administradores de modelo em [`apps/governance/admin.py`](file:///home/davidbf/dev/GateKeeper-DBF/apps/governance/admin.py), permitindo inspecionar cada versão, quem alterou e quando.
+  * Integrado `SimpleHistoryAdmin` nos administradores de modelo em [`apps/governance/admin.py`](../../../apps/governance/admin.py), permitindo inspecionar cada versão, quem alterou e quando.
 
 ### 1.3 Camada de Serviços, Atomicidade e Idempotência (`services.py`)
 * **Problema:** A revogação manual de acessos via views alterava registros múltiplos sem bloco de transação segura. Dois cliques simultâneos podiam sobrescrever evidências, datas ou duplicar confirmações de revogação.
 * **Solução Implementada:**
-  * Criado o módulo [`apps/governance/services.py`](file:///home/davidbf/dev/GateKeeper-DBF/apps/governance/services.py) contendo a função transacional `revogar_item_checklist()`:
+  * Criado o módulo [`apps/governance/services.py`](../../../apps/governance/services.py) contendo a função transacional `revogar_item_checklist()`:
     * Anotação `@transaction.atomic` garantindo que o item do checklist, vínculo de acesso, processo de offboarding e colaborador sejam atualizados atomicamente (tudo ou nada).
     * Bloqueio pessimista de linha via `select_for_update()` para eliminar condições de corrida (*race conditions* / *double submit*).
     * Garantia de **idempotência**: se o item já foi finalizado (`status != PENDENTE`), a requisição é recusada com `ValidationError`.
@@ -44,7 +44,7 @@
 ### 1.4 Validação Estrita de Evidências em Ativos Críticos e Escopo LGPD (`forms.py`)
 * **Problema:** O aceite de evidências em branco ou preenchidas com textos vagos ("Revogado manualmente", "teste", "ok") invalidava a comprovação forense e técnica perante auditorias de SOC e órgãos reguladores (ANPD).
 * **Solução Implementada:**
-  * Criado o formulário [`apps/governance/forms.py`](file:///home/davidbf/dev/GateKeeper-DBF/apps/governance/forms.py) (`RevogacaoItemForm`):
+  * Criado o formulário [`apps/governance/forms.py`](../../../apps/governance/forms.py) (`RevogacaoItemForm`):
     * Exige obrigatoriamente evidência (ID de chamado GLPI/ITSM, log de auditoria ou ticket) quando o sistema vinculado possuir criticidade `CRITICA`, `ALTA` ou a flag `armazena_dados_lgpd=True`.
     * Rejeita ativamente termos vagos e genéricos (`"revogado manualmente"`, `"teste"`, `"ok"`, `"revogado"`).
     * Oferece seletor de status (`REVOGADO`, `FALHA`, `NAO_APLICAVEL`) com padrão seguro `REVOGADO`.
@@ -52,7 +52,7 @@
 ### 1.5 Correções Estruturais do Fluxo de Offboarding
 * **Inclusão Abrangente de Acessos:** A geração de checklist no início do offboarding agora inclui todos os vínculos não revogados (`exclude(status=REVOGADO)`), cobrindo adequadamente contas em estado `BLOQUEADO`.
 * **Desligamento Imediato no Início do Processo:** Ao disparar o offboarding, o colaborador é imediatamente sinalizado com `status = DESLIGADO` e `data_desligamento = timezone.localdate()` (fuso `America/Bahia`). O painel do SOC reflete o risco de contas órfãs imediatamente enquanto o checklist não for 100% resolvido.
-* **Bloqueio de Concessão de Novos Acessos:** No método `clean()` de [`VinculoAcesso`](file:///home/davidbf/dev/GateKeeper-DBF/apps/governance/models.py), novas concessões são proibidas caso o colaborador esteja desligado ou possua processo de offboarding ativo.
+* **Bloqueio de Concessão de Novos Acessos:** No método `clean()` de [`VinculoAcesso`](../../../apps/governance/models.py), novas concessões são proibidas caso o colaborador esteja desligado ou possua processo de offboarding ativo.
 * **Suporte Formal a Recontratações:** Campo `ProcessoOffboarding.colaborador` flexibilizado para `ForeignKey` com `UniqueConstraint(fields=['colaborador'], condition=~Q(status='CONCLUIDO'))`, viabilizando múltiplos ciclos históricos sem colisão no banco.
 * **Granularidade de Status no Checklist:** Introduzido `StatusItem` (`PENDENTE`, `REVOGADO`, `FALHA`, `NAO_APLICAVEL`). Caso haja pendências com falha, o processo fica retido em `PENDENTE` sinalizando intervenção técnica necessária.
 * **Consistência de Fuso Horário:** Uso estrito de `timezone.localdate()` respeitando o fuso horário configurado `America/Bahia`.
@@ -61,7 +61,7 @@
 
 ## 2. 🧪 Validação Automatizada de Segurança & Regras de Negócio
 
-Adicionada a classe de testes `Phase1AuditAndIntegrityTests` em [`apps/governance/tests.py`](file:///home/davidbf/dev/GateKeeper-DBF/apps/governance/tests.py), elevando a suíte para **12 testes automatizados**:
+Adicionada a classe de testes `Phase1AuditAndIntegrityTests` em [`apps/governance/tests.py`](../../../apps/governance/tests.py), elevando a suíte para **12 testes automatizados**:
 
 1. `test_01_autenticacao_obrigatoria_redireciona_anonimos`: Redirecionamento 302 para login em todas as rotas.
 2. `test_02_tela_de_login_disponivel_sem_autenticacao`: Exibição de formulário e CSRF token na tela pública de login.
@@ -111,4 +111,3 @@ Avançar para a **Fase 2 (Plataforma & Hardening de Configuração)** do Plano d
 * **2.3:** Front-end local (Tailwind / Lucide desvinculados de CDN externa) + CSP rígida sem `unsafe-inline`.
 * **2.4:** Configuração de produção segura (`python manage.py check --deploy`).
 * **2.5:** Revisão de permissões de diretórios e links da documentação.
-

@@ -6,6 +6,8 @@ Uso:
     python manage.py create_root
 """
 
+import secrets
+
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
@@ -26,9 +28,10 @@ class Command(BaseCommand):
             )
             return
 
-        # Senha padrão de bootstrap restrita estritamente ao ambiente de desenvolvimento (DEBUG=True)
+        # Senha aleatória a cada execução: uma senha fixa no código é pública num repositório aberto
+        # e daria superusuário em qualquer instância de dev/homologação exposta na rede.
         username = "root"
-        password = "RootDev2026!"  # nosec B105
+        password = secrets.token_urlsafe(18)
         email = "root@gatekeeper.local"
 
         user, created = User.objects.get_or_create(
@@ -52,5 +55,5 @@ class Command(BaseCommand):
         action = "criado" if created else "redefinido"
         self.stdout.write(self.style.SUCCESS(f"✅ Usuário master '{username}' {action} com sucesso!"))
         self.stdout.write(f"   • Usuário: {username}")
-        self.stdout.write(f"   • Senha:   {password}")
+        self.stdout.write(f"   • Senha:   {password}  (gerada agora; não é exibida de novo)")
         self.stdout.write("   • Acesso:  Superuser (bypass total de permissões / estilo root)")

@@ -33,7 +33,7 @@ services:
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
       DATABASE_URL: postgres://${POSTGRES_USER:-gatekeeper}:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@db:5432/${POSTGRES_DB:-gatekeeper_db}
       CACHE_URL: ${CACHE_URL:-dbcache://gatekeeper_cache}
-      TIME_ZONE: America/Bahia
+      TIME_ZONE: ${TIME_ZONE:-America/Bahia}
       ADMIN_URL: ${ADMIN_URL:-admin/}
       TRUSTED_PROXY_COUNT: "1"
       USE_X_FORWARDED_PROTO: "True"

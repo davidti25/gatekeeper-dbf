@@ -174,7 +174,8 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = "pt-br"
 
-TIME_ZONE = "America/Bahia"
+# Fuso da trilha de auditoria (nome IANA, ex.: America/Sao_Paulo, Europe/Lisbon)
+TIME_ZONE = env("TIME_ZONE", default="America/Bahia")
 
 USE_I18N = True
 

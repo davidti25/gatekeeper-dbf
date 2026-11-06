@@ -2194,3 +2194,41 @@ class RevisaoPosPlanoV3Tests(TestCase):
                 self.assertEqual(self.client.post(url, dados).status_code, 403)
                 self.processo.refresh_from_db()
                 self.assertEqual(self.processo.status, ProcessoOffboarding.StatusOffboarding.INICIADO)
+
+
+class PreparacaoRepositorioPublicoTests(TestCase):
+    """
+    Preparação para publicação no GitHub (código aberto e adaptável por outras empresas):
+    P1 - create_root não usa senha fixa no código (seria credencial pública de superusuário)
+    P2 - Fuso horário da trilha de auditoria configurável por ambiente
+    """
+
+    @override_settings(DEBUG=True)
+    def test_p1_create_root_gera_senha_aleatoria(self):
+        """P1: cada execução gera senha nova e imprevisível; a antiga deixa de funcionar."""
+        from io import StringIO
+
+        senhas = []
+        for _ in range(2):
+            saida = StringIO()
+            call_command("create_root", stdout=saida)
+            senha = re.search(r"Senha:\s+(\S+)", saida.getvalue()).group(1)
+            self.assertGreaterEqual(len(senha), 20)
+            senhas.append(senha)
+
+        self.assertNotEqual(senhas[0], senhas[1])
+        root = User.objects.get(username="root")
+        self.assertTrue(root.check_password(senhas[1]))
+        self.assertFalse(root.check_password(senhas[0]))
+
+        codigo = (Path(settings.BASE_DIR) / "apps/governance/management/commands/create_root.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("RootDev2026!", codigo)
+
+    def test_p2_time_zone_configuravel_por_ambiente(self):
+        """P2: TIME_ZONE vem do ambiente (settings e compose), com padrão documentado no .env.example."""
+        base = Path(settings.BASE_DIR)
+        self.assertIn('TIME_ZONE = env("TIME_ZONE"', (base / "core/settings.py").read_text(encoding="utf-8"))
+        self.assertIn("TIME_ZONE: ${TIME_ZONE:-", (base / "docker-compose.yml").read_text(encoding="utf-8"))
+        self.assertIn("TIME_ZONE=", (base / ".env.example").read_text(encoding="utf-8"))
