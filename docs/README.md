@@ -30,3 +30,4 @@ Bem-vindo à Biblioteca de Documentação do **GateKeeper-DBF**. Este repositór
 * [2026-11-05 - Plano de Ação v2: Fase 8 — Infraestrutura & Deploy Seguro](biblioteca/2026-11/2026-11-05-fase-8-infraestrutura-e-deploy-seguro.md)
 * [2026-11-05 - Plano de Ação v2: Fase 9 — Front-end, Limpeza & Testes de Regressão](biblioteca/2026-11/2026-11-05-fase-9-frontend-limpeza-e-testes-de-regressao.md)
 * [2026-11-05 - Plano de Ação v3: Fases 10 a 12 — Integridade, MFA, Infraestrutura & Deploy](biblioteca/2026-11/2026-11-05-fase-10-a-12-plano-v3-integridade-mfa-e-deploy.md)
+* [2026-11-06 - Plano de Ação v4: Fases 13 a 17 — CI, Modularização de Testes, Revisão Periódica e Ciclo de Vida de Acessos](biblioteca/2026-11/2026-11-06-fase-13-a-17-plano-v4-ci-testes-e-revisao-de-acessos.md)
