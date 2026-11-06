@@ -53,7 +53,7 @@ jobs:
           pip-audit -r requirements.txt
 
       - name: 🔑 Verificação de Vazamento de Segredos (Gitleaks)
-        uses: gitleaks/gitleaks-action@245d8f6d2f3c0ce2f8df19ef9d5904d9c4fb2706 # v2.3.8
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
