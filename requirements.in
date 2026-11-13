@@ -21,7 +21,7 @@ django-csp>=4.0
 django-allauth[mfa]>=65.0.0
 
 # Servidor de Aplicação WSGI para Produção (Fase 4.4 - Docker)
-gunicorn>=23.0.0
+gunicorn>=27.0.0
 
 # Driver do PostgreSQL para Produção (Fase 4.4 - Docker / DB Seguro)
 psycopg[binary]>=3.2.0
