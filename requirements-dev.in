@@ -8,7 +8,7 @@
 coverage>=7.6.0
 
 # Linter e Formatador Ultrarrápido em Rust (Fase 4.2)
-ruff>=0.9.0
+ruff>=0.17.4
 
 # Análise Estática de Segurança para Código Python (SAST - Fase 4.2)
 bandit>=1.8.0
