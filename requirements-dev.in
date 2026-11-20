@@ -5,10 +5,10 @@
 -c requirements.txt
 
 # Ferramenta de Cobertura de Código para Testes Unitários e de Segurança (Fase 4.1)
-coverage>=7.6.0
+coverage>=7.17.3
 
 # Linter e Formatador Ultrarrápido em Rust (Fase 4.2)
-ruff>=0.9.0
+ruff>=0.17.5
 
 # Análise Estática de Segurança para Código Python (SAST - Fase 4.2)
 bandit>=1.8.0
